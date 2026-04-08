@@ -1,4 +1,5 @@
 import { APIRequestContext } from '@playwright/test'
+import { endpoints } from '../../shared/endpoints'
 
 export interface Employee {
   id: number
@@ -9,7 +10,7 @@ export async function createEmployee(
   request: APIRequestContext,
   data: { phone: string; [key: string]: unknown }
 ): Promise<Employee> {
-  const response = await request.post('/api/v1/admin/employees', { data })
+  const response = await request.post(endpoints.admin.employees, { data })
 
   if (!response.ok()) {
     throw new Error(
@@ -25,7 +26,7 @@ export async function deleteEmployee(
   request: APIRequestContext,
   id: number
 ): Promise<void> {
-  const response = await request.delete(`/api/v1/admin/employees/${id}`)
+  const response = await request.delete(endpoints.admin.employee(id))
 
   if (!response.ok()) {
     throw new Error(
@@ -38,7 +39,7 @@ export async function cleanupSignup(
   request: APIRequestContext,
   phone: string
 ): Promise<void> {
-  const response = await request.delete(`/api/v1/admin/signup/${phone}`)
+  const response = await request.delete(endpoints.admin.signupCleanup(phone))
 
   if (!response.ok()) {
     throw new Error(
