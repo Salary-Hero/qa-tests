@@ -1,0 +1,31 @@
+{
+  "name": "qa-tests",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "git@github.com:Salary-Hero/qa-tests.git",
+  "author": "taohuh <pimpakarn@salary-hero.com>",
+  "license": "MIT",
+  "scripts": {
+    "test:api": "ENV=dev playwright test --project=api",
+    "test:api:staging": "ENV=staging playwright test --project=api",
+    "test:admin": "ENV=dev playwright test --project=admin",
+    "test:admin:staging": "ENV=staging playwright test --project=admin",
+    "test:hr": "ENV=dev playwright test --project=hr",
+    "test:hr:staging": "ENV=staging playwright test --project=hr",
+    "test:all": "playwright test",
+    "report": "playwright show-report",
+    "tsc": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@types/node": "^25.5.2",
+    "dotenv": "^17.4.1",
+    "prettier": "^3.8.1",
+    "typescript": "^6.0.2"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  }
+}
