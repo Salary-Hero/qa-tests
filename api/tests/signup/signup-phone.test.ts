@@ -1,92 +1,145 @@
 import { test, expect } from '@playwright/test'
-import user from '../../../shared/fixtures/user.json'
-import { OTP, APP_VERSION } from '../../../shared/utils/env'
+import { OTP, APP_VERSION, PINCODE } from '../../../shared/utils/env'
 import {
-  createEmployee,
-  deleteEmployee,
-  cleanupSignup,
-  Employee,
-} from '../../helpers/employee'
+  seedFromProfile,
+  cleanupFromProfile,
+  SeedContext,
+} from '../../helpers/seed'
+import { phoneSignupProfile } from '../../helpers/profiles/phone'
+import { firebaseSignIn, firebaseRefreshToken } from '../../helpers/firebase'
 import { validateSchema } from '../../../shared/utils/schema'
 import {
   OtpRequestSchema,
   OtpVerifySchema,
-  SignupSchema,
-  PinSetupSchema,
+  FirebaseSignInSchema,
+  FirebaseRefreshSchema,
+  CreatePinSchema,
+  GetProfileSchema,
 } from '../../schema/signup.schema'
 import { endpoints } from '../../../shared/endpoints'
 
 test.describe('Signup by Phone', () => {
-  let employee: Employee
+  let ctx: SeedContext
 
   test.beforeEach(async ({ request }) => {
-    await test.step('Seed: create employee', async () => {
-      employee = await createEmployee(request, user.employee)
+    await test.step('Seed from phoneSignupProfile', async () => {
+      ctx = await seedFromProfile(request, phoneSignupProfile)
     })
   })
 
   test.afterEach(async ({ request }) => {
-    await test.step('Cleanup: remove signup record', async () => {
-      await cleanupSignup(request, employee.phone)
-    })
-    await test.step('Cleanup: delete employee', async () => {
-      await deleteEmployee(request, employee.id)
+    await test.step('Cleanup from phoneSignupProfile', async () => {
+      await cleanupFromProfile(request, phoneSignupProfile, ctx)
     })
   })
 
-  test('should complete signup successfully with a valid phone number', async ({
+  test('should complete full signup flow for a valid phone number', async ({
     request,
   }) => {
+    const phone = ctx.identifiers.phone!
     let refCode: string
+    let firebaseCustomToken: string
+    let firebaseRefreshTok: string
+    let idTokenPrePin: string
+    let idTokenPostPin: string
 
-    await test.step('Request OTP', async () => {
+    await test.step('Step 1: Request OTP', async () => {
       const response = await request.post(endpoints.signup.requestOtp, {
-        data: { phone: user.phone },
+        data: { phone },
         headers: { 'x-app-version': APP_VERSION },
       })
 
       expect(response.status()).toBe(200)
       const body = await response.json()
       validateSchema(body, OtpRequestSchema, 'OTP request')
-      refCode = body.verification_info.ref_code
+      expect(body.is_signup).toBe(false)
+      expect(body.next_state).toBe('signup.phone.verify')
+      refCode = body.verification_info.ref_code as string
     })
 
-    await test.step('Verify OTP', async () => {
+    await test.step('Step 2: Verify OTP', async () => {
       const response = await request.post(endpoints.signup.verifyOtp, {
-        data: { phone: user.phone, ref_code: refCode, code: OTP },
+        params: { action: 'verify' },
+        data: { phone, ref_code: refCode, code: OTP },
         headers: { 'x-app-version': APP_VERSION },
       })
 
       expect(response.status()).toBe(200)
       const body = await response.json()
       validateSchema(body, OtpVerifySchema, 'OTP verify')
+      expect(body.is_signup).toBe(true)
+      expect(body.next_state).toBe('user.profile')
+      firebaseCustomToken = body.verification_info.token as string
     })
 
-    await test.step('Submit signup', async () => {
-      const response = await request.post(endpoints.signup.submit, {
-        data: { phone: user.phone },
-        headers: { 'x-app-version': APP_VERSION },
-      })
-
-      expect(response.status()).toBe(200)
-      const body = await response.json()
-      validateSchema(body, SignupSchema, 'Signup')
-      expect(body.data.phone).toBe(user.phone)
+    await test.step('Step 3: Firebase sign in with custom token', async () => {
+      const result = await firebaseSignIn(request, firebaseCustomToken)
+      validateSchema(result, FirebaseSignInSchema, 'Firebase sign in')
+      firebaseRefreshTok = result.refreshToken as string
     })
 
-    await test.step('Setup PIN', async () => {
-      const response = await request.post(endpoints.signup.setupPin, {
-        data: {
-          phone: user.phone,
-          pincode: user.pincode,
-          confirm_pincode: user.pincode,
+    await test.step('Step 4: Get Firebase ID token (pre-PIN)', async () => {
+      const result = await firebaseRefreshToken(request, firebaseRefreshTok)
+      validateSchema(
+        result,
+        FirebaseRefreshSchema,
+        'Firebase refresh (pre-PIN)'
+      )
+      idTokenPrePin = result.id_token as string
+    })
+
+    await test.step('Step 5: Create PIN', async () => {
+      const response = await request.post(endpoints.signup.createPin, {
+        data: { pincode: PINCODE },
+        headers: {
+          'x-app-version': APP_VERSION,
+          Authorization: `Bearer ${idTokenPrePin}`,
         },
-        headers: { 'x-app-version': APP_VERSION },
       })
 
       expect(response.status()).toBe(200)
       const body = await response.json()
-      validateSchema(body, PinSetupSchema, 'PIN setup')
+      validateSchema(body, CreatePinSchema, 'Create PIN')
+      expect(body.message).toBe('Create PIN successfully')
+    })
+
+    await test.step('Step 6: Get Firebase ID token (post-PIN)', async () => {
+      const result = await firebaseRefreshToken(request, firebaseRefreshTok)
+      validateSchema(
+        result,
+        FirebaseRefreshSchema,
+        'Firebase refresh (post-PIN)'
+      )
+      idTokenPostPin = result.id_token as string
+    })
+
+    await test.step('Step 7: Get Profile', async () => {
+      const response = await request.get(endpoints.signup.getProfile, {
+        headers: {
+          'x-app-version': APP_VERSION,
+          Authorization: `Bearer ${idTokenPostPin}`,
+        },
+      })
+
+      expect(response.status()).toBe(200)
+      const body = await response.json()
+      validateSchema(body, GetProfileSchema, 'Get profile')
+      expect(body.profile.phone).toBe(phone)
+      expect(body.profile.has_pincode).toBe(true)
+      expect(body.profile.signup_at).not.toBeNull()
+    })
+
+    await test.step('Step 8: Logout (best-effort)', async () => {
+      try {
+        await request.post(endpoints.signup.logout, {
+          headers: {
+            'x-app-version': APP_VERSION,
+            Authorization: `Bearer ${idTokenPostPin}`,
+          },
+        })
+      } catch {
+        // logout failure does not fail the test
+      }
     })
   })
 })

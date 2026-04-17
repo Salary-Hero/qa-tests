@@ -1,0 +1,49 @@
+{
+  "dev": {
+    "companies": {
+      "phone": {
+        "id": 128,
+        "name": "QA - Phone Signup Only",
+        "qa_paycycle_id": 1268
+      },
+      "line": { "id": 127, "name": "QA - Line Signup Only", "qa_paycycle_id": 1268 },
+      "employee_id": { "id": 129, "name": "QA - EmployeeID and National ID/Passport Signup Only", "qa_paycycle_id": 3042 },
+      "entra_id": { "id": 1143, "name": "QA - Microsoft Entra ID Signup Only", "qa_paycycle_id": 3637 }
+    },
+    "fixedIdentifiers": {
+      "line_id": "U4f3fa9982dd206de074a790764f6fe80",
+      "email": "TBD"
+    },
+    "otp": "111111"
+  },
+  "staging": {
+    "companies": {
+      "phone": {
+        "id": 1287,
+        "name": "QA - Phone Signup Only",
+        "qa_paycycle_id": 0
+      },
+      "line": { "id": 0, "name": "TBD", "qa_paycycle_id": 0 },
+      "employee_id": { "id": 0, "name": "TBD", "qa_paycycle_id": 0 },
+      "entra_id": { "id": 0, "name": "TBD", "qa_paycycle_id": 0 }
+    },
+    "fixedIdentifiers": {
+      "line_id": "TBD",
+      "email": "TBD"
+    },
+    "otp": "199119"
+  },
+  "prod": {
+    "companies": {
+      "phone": { "id": 0, "name": "TBD", "qa_paycycle_id": 0 },
+      "line": { "id": 0, "name": "TBD", "qa_paycycle_id": 0 },
+      "employee_id": { "id": 0, "name": "TBD", "qa_paycycle_id": 0 },
+      "entra_id": { "id": 0, "name": "TBD", "qa_paycycle_id": 0 }
+    },
+    "fixedIdentifiers": {
+      "line_id": "TBD",
+      "email": "TBD"
+    },
+    "otp": ""
+  }
+}
