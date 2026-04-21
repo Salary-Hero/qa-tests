@@ -1,68 +1,63 @@
-# QA Test Requirements Documentation
+# QA Requirements Documentation
 
-This folder contains team-shared requirements documentation for the QA test suite. All documentation here is meant for team collaboration and reference.
+Team-shared requirements for the QA API test suite. All files here are committed to version control.
 
-## Contents
+## Structure
 
-### 📋 [TEST_REQUIREMENTS.md](./TEST_REQUIREMENTS.md)
-Overall test strategy, objectives, and pass/fail criteria for the QA automation suite.
+```
+requirements/
+├── COVERAGE_MATRIX.md          ← Start here for a full test overview
+├── INFRASTRUCTURE_REQUIREMENTS.md  ← Environment setup, running tests, CI/CD
+├── shared/
+│   └── authentication.md       ← Admin login, Firebase token exchange
+├── employee/                   ← Employee CRUD feature
+│   ├── README.md
+│   ├── test-requirements.md
+│   ├── api-contract.md
+│   ├── test-data.md
+│   └── test-cases.md
+├── signup-phone/               ← Phone OTP signup feature
+│   ├── README.md
+│   ├── test-requirements.md
+│   ├── api-contract.md
+│   ├── test-data.md
+│   └── test-cases.md
+├── signup-line/                ← LINE signup feature
+│   ├── README.md
+│   ├── test-requirements.md
+│   ├── api-contract.md
+│   ├── test-data.md
+│   └── test-cases.md
+└── signup-employee-id/         ← Employee ID signup feature
+    ├── README.md
+    ├── test-requirements.md
+    ├── api-contract.md
+    ├── test-data.md
+    └── test-cases.md
+```
 
-**Contains:**
-- Test strategy overview
-- Test objectives
-- Scope and limitations
-- Pass/fail criteria
-- Risk assessment
+## Where to Start
 
-### 🔌 [API_CONTRACT.md](./API_CONTRACT.md)
-Detailed API endpoint specifications, request/response formats, and authentication requirements.
+| Goal | Go to |
+|------|-------|
+| See all tests at a glance | [COVERAGE_MATRIX.md](./COVERAGE_MATRIX.md) |
+| Set up and run the tests | [INFRASTRUCTURE_REQUIREMENTS.md](./INFRASTRUCTURE_REQUIREMENTS.md) |
+| Understand auth / Firebase | [shared/authentication.md](./shared/authentication.md) |
+| Work on Employee CRUD | [employee/README.md](./employee/README.md) |
+| Work on Phone signup | [signup-phone/README.md](./signup-phone/README.md) |
+| Work on LINE signup | [signup-line/README.md](./signup-line/README.md) |
+| Work on Employee ID signup | [signup-employee-id/README.md](./signup-employee-id/README.md) |
 
-**Contains:**
-- API endpoints (Create, Read, Update, Delete)
-- Request/response schemas
-- Status codes and error handling
-- Authentication methods
-- Rate limits and constraints
+## Each Feature Folder Contains
 
-### 📊 [TEST_DATA_REQUIREMENTS.md](./TEST_DATA_REQUIREMENTS.md)
-Specifications for test data generation, validation, and cleanup procedures.
+| File | Contents |
+|------|---------|
+| `README.md` | Feature overview, quick reference |
+| `test-requirements.md` | Objectives, scope, pass/fail criteria, risks |
+| `api-contract.md` | Endpoints, request/response format, status codes |
+| `test-data.md` | Identifiers, constraints, data lifecycle |
+| `test-cases.md` | Step-by-step test cases with pass criteria |
 
-**Contains:**
-- Test data format specifications
-- Data generation rules
-- Uniqueness constraints
-- Cleanup requirements
-- Data lifecycle management
+## Personal Notes
 
-### 🏗️ [INFRASTRUCTURE_REQUIREMENTS.md](./INFRASTRUCTURE_REQUIREMENTS.md)
-Environment setup, dependencies, and infrastructure requirements for running tests.
-
-**Contains:**
-- Environment setup (DEV, STAGING, PROD)
-- Dependencies and versions
-- Database configuration
-- Authentication setup
-- CI/CD requirements
-
-### 🧪 [TEST_CASES.md](./TEST_CASES.md)
-Detailed test case specifications for all test scenarios.
-
-**Contains:**
-- Test case matrix with IDs
-- Test descriptions and preconditions
-- Expected outcomes
-- Coverage mapping
-- Dependencies between tests
-
-## Usage
-
-- **For new team members:** Start with TEST_REQUIREMENTS.md, then review INFRASTRUCTURE_REQUIREMENTS.md
-- **For test maintenance:** Reference TEST_CASES.md and API_CONTRACT.md
-- **For troubleshooting:** Check TEST_DATA_REQUIREMENTS.md and INFRASTRUCTURE_REQUIREMENTS.md
-- **For implementation:** Use API_CONTRACT.md and TEST_CASES.md as specification
-
-## Note
-
-This folder contains **team-shared documentation**. All files are committed to version control.
-
-For personal working notes and analysis, see `.opencode/plans/` (not committed).
+Personal working notes live in `.opencode/plans/` (gitignored — not committed).
