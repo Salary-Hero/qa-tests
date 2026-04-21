@@ -15,6 +15,11 @@ export const endpoints = {
     logout: '/api/v1/user/account/profile/logout',
     employeeIdLookup: '/api/v3/public/account/signup/employee-id',
     employeeIdAddPhone: '/api/v2/public/account/signup/employee-id/add-phone',
+    lineSignup: '/api/v2/public/account/signup/line',
+    lineAddPhone: '/api/v2/public/account/signup/line/add-phone',
+  },
+  line: {
+    refreshToken: 'https://api.line.me/oauth2/v2.1/token',
   },
   firebase: {
     signInWithCustomToken:

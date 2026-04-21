@@ -4,48 +4,42 @@ import {
   deleteEmployee,
   findEmployeeByIdentifier,
 } from '../employee'
+import {
+  generatePhone,
+  generateEmployeeId,
+  generateNationalId,
+  generatePassportNo,
+  generateEmail,
+} from '../identifiers'
 import { CleanupStep, Employee, SeedProfile } from '../seed'
 import { getCompany } from '../../../shared/utils/seed-config'
-
-function generateEmployeeId(): string {
-  return `EMP${Date.now()}${Math.floor(Math.random() * 100)}`
-}
-
-function generateNationalId(): string {
-  // 13 digits, first digit 1-8
-  const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`.slice(-12)
-  return `1${suffix}`
-}
-
-function generatePassportNo(): string {
-  // Format: 2 uppercase letters + 7 digits (common passport format)
-  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-  const l1 = letters[Math.floor(Math.random() * 26)]
-  const l2 = letters[Math.floor(Math.random() * 26)]
-  const digits = `${Date.now()}`.slice(-7)
-  return `${l1}${l2}${digits}`
-}
-
-function generatePhone(): string {
-  const suffix = `${Date.now()}${Math.floor(Math.random() * 100)}`.slice(-8)
-  return `08${suffix}`
-}
 
 const cleanupEmployee: CleanupStep = async (request, ctx) => {
   let userId = ctx.employee.user_id
 
-  if (!userId && ctx.identifiers.employee_id) {
-    const found = await findEmployeeByIdentifier(
-      request,
-      ctx.company,
-      ctx.identifiers.employee_id,
-      'employee_id'
-    )
-    userId = found?.user_id ?? ''
-  }
-
+  // Post-test phase: we have the user_id from the test we just ran
+  // Delete via API - backend cascades to all tables (employment, user_identity, user_balance, users)
   if (userId) {
     await deleteEmployee(request, userId)
+    return
+  }
+
+  // Pre-seed phase: user_id is empty — try to find and delete any lingering users
+  if (ctx.identifiers.employee_id) {
+    try {
+      const found = await findEmployeeByIdentifier(
+        request,
+        ctx.company,
+        ctx.identifiers.employee_id,
+        'employee_id'
+      )
+      if (found?.user_id) {
+        await deleteEmployee(request, found.user_id)
+      }
+    } catch {
+      // If search or delete fails, that's OK - fresh employee_id ensures no collision
+      // Just continue seeding with the new employee_id
+    }
   }
 }
 
@@ -61,6 +55,7 @@ export const employeeIdSignupProfile: SeedProfile = {
     employee_id: generateEmployeeId(),
     national_id: generateNationalId(),
     phone: generatePhone(),
+    email: generateEmail(),
   }),
 
   createEmployee: async (request, company, identifiers): Promise<Employee> => {
@@ -95,6 +90,7 @@ export const employeeIdPassportSignupProfile: SeedProfile = {
     employee_id: generateEmployeeId(),
     passport_no: generatePassportNo(),
     phone: generatePhone(),
+    email: generateEmail(),
   }),
 
   createEmployee: async (request, company, identifiers): Promise<Employee> => {

@@ -83,6 +83,48 @@ export const EmployeeIdOtpVerifySchema = z.object({
   }),
 })
 
+/** LINE Step 1: POST /api/v2/public/account/signup/line */
+export const LineSignupSchema = z.object({
+  is_signup: z.literal(false),
+  verification_info: z.object({
+    auth_challenge: z.string(),
+  }),
+})
+
+/** LINE Step 2: POST /api/v2/public/account/signup/line/add-phone?action=request */
+export const LineOtpRequestSchema = z.object({
+  verification: z.object({
+    ref_code: z.string(),
+  }),
+})
+
+/** LINE Step 3: POST /api/v2/public/account/signup/line/add-phone?action=verify */
+export const LineOtpVerifySchema = z.object({
+  verification: z.object({
+    token: z.string(),
+    profile: z.object({
+      user_id: z.string(),
+      line_id: z.string().nullable(),
+      has_pincode: z.boolean(),
+      signup_at: z.string().nullable(),
+    }),
+    company: z.object({
+      id: z.number(),
+      name: z.string(),
+      status: z.string(),
+    }),
+  }),
+})
+
+/** LINE token refresh: POST https://api.line.me/oauth2/v2.1/token */
+export const LineTokenRefreshSchema = z.object({
+  access_token: z.string(),
+  token_type: z.string(),
+  refresh_token: z.string(),
+  expires_in: z.number(),
+  scope: z.string(),
+})
+
 /** Step 7: GET /api/v1/user/account/profile */
 export const GetProfileSchema = z.object({
   company: z.object({

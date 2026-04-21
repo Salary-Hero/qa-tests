@@ -8,3 +8,6 @@ test-results/
 .vscode/
 *.log
 *.tmp
+.opencode/plans/
+test-report.json
+yarn.lock

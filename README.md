@@ -48,6 +48,7 @@ yarn report
 
 ## Environment variables
 
+### General
 | Variable      | Default  | Description                                  |
 | ------------- | -------- | -------------------------------------------- |
 | `ENV`         | `dev`    | Target environment: `dev`, `staging`, `prod` |
@@ -59,6 +60,15 @@ OTP codes are resolved automatically from `playwright.config.ts` based on `ENV`:
 | ------- | -------- |
 | dev     | `111111` |
 | staging | `199119` |
+
+### Database (Test Data Management)
+| Variable     | Required | Description                    |
+| ------------ | -------- | ------------------------------ |
+| `DB_HOST`    | ✓        | Database host (e.g., localhost) |
+| `DB_PORT`    | ✓        | Database port (default: 5432)  |
+| `DB_NAME`    | ✓        | Database name (e.g., showhire_dev) |
+| `DB_USER`    | ✓        | Database user                  |
+| `DB_PASSWORD`| ✓        | Database password              |
 
 ## Project structure
 
@@ -90,13 +100,107 @@ shared/
 
 ## Test data lifecycle (API tests)
 
-Each API test follows this pattern:
+### Overview
+Tests use a dev database with reusable test company (Company ID: 128 - "QA - Phone Signup Only") and automatic cleanup of created employee records.
 
-1. `beforeEach` — seed an employee via the admin API
-2. Run the test
-3. `afterEach` — clean up the signup record first, then delete the employee
+**Pattern:**
+1. **Setup** — Create test employee under shared company using database
+2. **Test** — Call API endpoint
+3. **Verify** — Check API response and database state
+4. **Cleanup** — Delete created employee and user records (company remains intact)
 
-Cleanup order matters: the signup record must be removed before the employee is deleted.
+### Using Test Fixtures
+
+Every API test should follow this pattern:
+
+```typescript
+import { test } from '@playwright/test';
+import { useTestContext, useTestCleanup } from '../../shared/test-fixtures';
+import { createFullEmployee } from '../../shared/test-data';
+import { TEST_COMPANY_IDS } from '../../shared/constants';
+
+test('update employee detail', async ({ request }) => {
+  // Initialize test context
+  const context = await useTestContext(TEST_COMPANY_IDS.defaultCompany);
+  const cleanup = await useTestCleanup(context);
+
+  try {
+    // SETUP: Create test data
+    const employee = await createFullEmployee(
+      context,
+      TEST_COMPANY_IDS.defaultCompany,
+      {
+        firstName: 'John',
+        lastName: 'Doe',
+      }
+    );
+
+    // TEST: Call API
+    const response = await request.patch(
+      `/api/employees/${employee.employment_id}`,
+      { data: { firstName: 'Jane' } }
+    );
+
+    // VERIFY: Check response
+    expect(response.status()).toBe(200);
+
+  } finally {
+    // CLEANUP: Delete created records automatically
+    await cleanup();
+  }
+});
+```
+
+### Key Functions
+
+#### Test Setup
+- `useTestContext(companyId)` — Initialize test with company ID
+- `useTestCleanup(context)` — Register automatic cleanup
+- `createFullEmployee(context, companyId, options)` — Create employee under company
+
+#### Test Data Helpers
+- `getCompanyById(companyId)` — Fetch company from database
+- `getEmploymentById(employmentId)` — Fetch employment record
+- `getUserById(userId)` — Fetch user record
+- `getUserIdentityByUid(userUid)` — Fetch user identity
+- `verifyEmployeeData(employmentId, expectedData)` — Verify employee data matches
+
+#### Cleanup Behavior
+- **Deleted:** Employee, User Identity, Legacy User records
+- **Preserved:** Company (reused across tests)
+- **Tracked:** All deleted records are logged in `test_metadata` table for audit trail
+
+### Creating Tests with New Company
+
+For tests that need to create a new company (e.g., "update company" tests):
+
+```typescript
+import { createTestCompanyAndData } from '../../shared/test-data';
+
+test('update company settings', async ({ request }) => {
+  const context = await useTestContext(null); // No default company
+  const cleanup = await useTestCleanup(context);
+
+  try {
+    // Create new company (will be deleted on cleanup)
+    const company = await createTestCompanyAndData(context, {
+      name: 'Test Company',
+    });
+
+    // Create employee under new company
+    const employee = await createFullEmployee(
+      context,
+      company.company_id,
+      { firstName: 'Jane', lastName: 'Doe' }
+    );
+
+    // Test and verify...
+
+  } finally {
+    await cleanup();
+  }
+});
+```
 
 ## Type checking
 

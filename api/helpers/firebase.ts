@@ -1,13 +1,33 @@
 import { APIRequestContext } from '@playwright/test'
+import { z } from 'zod'
 import { endpoints } from '../../shared/endpoints'
-import { FIREBASE_API_KEY } from '../../shared/utils/env'
+import { FIREBASE_API_KEY, ENV } from '../../shared/utils/env'
+import { ENV_ERRORS } from '../../shared/utils/error-messages'
+
+const FirebaseSignInResponseSchema = z.object({
+  kind: z.string(),
+  idToken: z.string(),
+  refreshToken: z.string(),
+  expiresIn: z.string(),
+  isNewUser: z.boolean(),
+})
+
+const FirebaseRefreshTokenResponseSchema = z.object({
+  id_token: z.string(),
+  access_token: z.string(),
+  refresh_token: z.string(),
+  expires_in: z.union([z.number(), z.string()]),
+  token_type: z.string().optional(),
+})
+
+export type FirebaseSignInResponse = z.infer<typeof FirebaseSignInResponseSchema>
+export type FirebaseRefreshTokenResponse = z.infer<
+  typeof FirebaseRefreshTokenResponseSchema
+>
 
 function requireFirebaseApiKey(): string {
   if (!FIREBASE_API_KEY) {
-    throw new Error(
-      'Firebase API key is not configured. ' +
-        'Set FIREBASE_API_KEY_<ENV> in your .env file.'
-    )
+    throw new Error(ENV_ERRORS.FIREBASE_API_KEY(ENV))
   }
   return FIREBASE_API_KEY
 }
@@ -19,23 +39,32 @@ function requireFirebaseApiKey(): string {
 export async function firebaseSignIn(
   request: APIRequestContext,
   customToken: string
-): Promise<Record<string, unknown>> {
+): Promise<FirebaseSignInResponse> {
   const key = requireFirebaseApiKey()
+  const url = `${endpoints.firebase.signInWithCustomToken}?key=${key}`
 
-  const response = await request.post(
-    `${endpoints.firebase.signInWithCustomToken}?key=${key}`,
-    {
-      data: { token: customToken, returnSecureToken: true },
-    }
-  )
+  const response = await request.post(url, {
+    data: { token: customToken, returnSecureToken: true },
+  })
 
   if (!response.ok()) {
     throw new Error(
-      `Firebase signIn failed: ${response.status()} ${await response.text()}`
+      `Firebase signIn failed\n` +
+        `  POST ${url}\n` +
+        `  Status: ${response.status()}\n` +
+        `  Response: ${await response.text()}`
     )
   }
 
-  return response.json()
+  const body = await response.json()
+  const parsed = FirebaseSignInResponseSchema.safeParse(body)
+  if (!parsed.success) {
+    throw new Error(
+      `Firebase signIn returned invalid response: ${parsed.error.message}`
+    )
+  }
+
+  return parsed.data
 }
 
 /**
@@ -45,24 +74,33 @@ export async function firebaseSignIn(
 export async function firebaseRefreshToken(
   request: APIRequestContext,
   refreshToken: string
-): Promise<Record<string, unknown>> {
+): Promise<FirebaseRefreshTokenResponse> {
   const key = requireFirebaseApiKey()
+  const url = `${endpoints.firebase.refreshToken}?key=${key}`
 
-  const response = await request.post(
-    `${endpoints.firebase.refreshToken}?key=${key}`,
-    {
-      data: {
-        grant_type: 'refresh_token',
-        refresh_token: refreshToken,
-      },
-    }
-  )
+  const response = await request.post(url, {
+    data: {
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    },
+  })
 
   if (!response.ok()) {
     throw new Error(
-      `Firebase refresh failed: ${response.status()} ${await response.text()}`
+      `Firebase refresh failed\n` +
+        `  POST ${url}\n` +
+        `  Status: ${response.status()}\n` +
+        `  Response: ${await response.text()}`
     )
   }
 
-  return response.json()
+  const body = await response.json()
+  const parsed = FirebaseRefreshTokenResponseSchema.safeParse(body)
+  if (!parsed.success) {
+    throw new Error(
+      `Firebase refresh returned invalid response: ${parsed.error.message}`
+    )
+  }
+
+  return parsed.data
 }

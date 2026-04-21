@@ -1,16 +1,15 @@
 import { test, expect } from '@playwright/test'
-import { OTP, APP_VERSION, PINCODE } from '../../../shared/utils/env'
-import {
-  seedFromProfile,
-  cleanupFromProfile,
-  SeedContext,
-  SeedProfile,
-} from '../../helpers/seed'
+import { OTP, PINCODE } from '../../../shared/utils/env'
+import { SeedContext } from '../../helpers/seed'
 import {
   employeeIdSignupProfile,
   employeeIdPassportSignupProfile,
 } from '../../helpers/profiles/employee-id'
-import { firebaseSignIn, firebaseRefreshToken } from '../../helpers/firebase'
+import {
+  firebaseSignIn,
+  firebaseRefreshToken as firebaseRefreshTokenAPI,
+} from '../../helpers/firebase'
+import { setupSeedTeardown } from '../../helpers/test-setup'
 import { validateSchema } from '../../../shared/utils/schema'
 import {
   EmployeeIdLookupSchema,
@@ -23,11 +22,16 @@ import {
 } from '../../schema/signup.schema'
 import { endpoints } from '../../../shared/endpoints'
 import { APIRequestContext } from '@playwright/test'
+import {
+  DEFAULT_REQUEST_HEADERS,
+  AUTH_HEADERS,
+  EMPLOYEE_ID_VERIFY_PARAMS,
+} from '../../helpers/request'
 
 async function runSignupFlow(
   request: APIRequestContext,
   ctx: SeedContext,
-  identity: string
+  verificationIdentifier: string
 ) {
   const { employee_id, phone } = ctx.identifiers
   const company_id = ctx.company.id
@@ -35,14 +39,14 @@ async function runSignupFlow(
   let authChallenge: string
   let refCode: string
   let firebaseCustomToken: string
-  let firebaseRefreshTok: string
+  let firebaseRefreshToken: string
   let idTokenPrePin: string
   let idTokenPostPin: string
 
-  await test.step('Step 1: Lookup employee by ID and identity', async () => {
+  await test.step('Lookup employee by ID and identity', async () => {
     const response = await request.post(endpoints.signup.employeeIdLookup, {
-      data: { employee_id, identity, company_id },
-      headers: { 'x-app-version': APP_VERSION },
+      data: { employee_id, identity: verificationIdentifier, company_id },
+      headers: DEFAULT_REQUEST_HEADERS,
     })
 
     expect(response.status()).toBe(200)
@@ -52,11 +56,11 @@ async function runSignupFlow(
     authChallenge = body.verification_info.auth_challenge as string
   })
 
-  await test.step('Step 2: Request OTP for phone', async () => {
+  await test.step('Request OTP for phone', async () => {
     const response = await request.post(endpoints.signup.employeeIdAddPhone, {
       params: { verification_method: 'otp', action: 'request' },
       data: { phone, auth_challenge: authChallenge },
-      headers: { 'x-app-version': APP_VERSION },
+      headers: DEFAULT_REQUEST_HEADERS,
     })
 
     expect(response.status()).toBe(200)
@@ -65,16 +69,16 @@ async function runSignupFlow(
     refCode = body.verification.ref_code as string
   })
 
-  await test.step('Step 3: Verify OTP', async () => {
+  await test.step('Verify OTP', async () => {
     const response = await request.post(endpoints.signup.employeeIdAddPhone, {
-      params: { verification_method: 'otp', action: 'verify' },
+      params: { ...EMPLOYEE_ID_VERIFY_PARAMS, verification_method: 'otp' },
       data: {
         phone,
         auth_challenge: authChallenge,
         fcm_token: '',
         verification: { ref_code: refCode, code: OTP },
       },
-      headers: { 'x-app-version': APP_VERSION },
+      headers: DEFAULT_REQUEST_HEADERS,
     })
 
     expect(response.status()).toBe(200)
@@ -83,25 +87,22 @@ async function runSignupFlow(
     firebaseCustomToken = body.verification.token as string
   })
 
-  await test.step('Step 4: Firebase sign in with custom token', async () => {
+  await test.step('Firebase sign in with custom token', async () => {
     const result = await firebaseSignIn(request, firebaseCustomToken)
     validateSchema(result, FirebaseSignInSchema, 'Firebase sign in')
-    firebaseRefreshTok = result.refreshToken as string
+    firebaseRefreshToken = result.refreshToken
   })
 
-  await test.step('Step 5: Get Firebase ID token (pre-PIN)', async () => {
-    const result = await firebaseRefreshToken(request, firebaseRefreshTok)
+  await test.step('Get Firebase ID token (pre-PIN)', async () => {
+    const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
     validateSchema(result, FirebaseRefreshSchema, 'Firebase refresh (pre-PIN)')
     idTokenPrePin = result.id_token as string
   })
 
-  await test.step('Step 6: Create PIN', async () => {
+  await test.step('Create PIN', async () => {
     const response = await request.post(endpoints.signup.createPin, {
       data: { pincode: PINCODE },
-      headers: {
-        'x-app-version': APP_VERSION,
-        Authorization: `Bearer ${idTokenPrePin}`,
-      },
+      headers: AUTH_HEADERS(idTokenPrePin),
     })
 
     expect(response.status()).toBe(200)
@@ -110,18 +111,15 @@ async function runSignupFlow(
     expect(body.message).toBe('Create PIN successfully')
   })
 
-  await test.step('Step 7: Get Firebase ID token (post-PIN)', async () => {
-    const result = await firebaseRefreshToken(request, firebaseRefreshTok)
+  await test.step('Get Firebase ID token (post-PIN)', async () => {
+    const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
     validateSchema(result, FirebaseRefreshSchema, 'Firebase refresh (post-PIN)')
     idTokenPostPin = result.id_token as string
   })
 
-  await test.step('Step 8: Get Profile', async () => {
+  await test.step('Get Profile', async () => {
     const response = await request.get(endpoints.signup.getProfile, {
-      headers: {
-        'x-app-version': APP_VERSION,
-        Authorization: `Bearer ${idTokenPostPin}`,
-      },
+      headers: AUTH_HEADERS(idTokenPostPin),
     })
 
     expect(response.status()).toBe(200)
@@ -132,13 +130,10 @@ async function runSignupFlow(
     expect(body.profile.signup_at).not.toBeNull()
   })
 
-  await test.step('Step 9: Logout (best-effort)', async () => {
+  await test.step('Logout (best-effort)', async () => {
     try {
       await request.post(endpoints.signup.logout, {
-        headers: {
-          'x-app-version': APP_VERSION,
-          Authorization: `Bearer ${idTokenPostPin}`,
-        },
+        headers: AUTH_HEADERS(idTokenPostPin),
       })
     } catch {
       // logout failure does not fail the test
@@ -146,67 +141,33 @@ async function runSignupFlow(
   })
 }
 
-function makeSignupDescribe(label: string, profile: SeedProfile) {
-  test.describe(label, () => {
-    let ctx: SeedContext
-
-    test.beforeEach(async ({ request }) => {
-      await test.step(`Seed from ${profile.name}`, async () => {
-        ctx = await seedFromProfile(request, profile)
-      })
-    })
-
-    test.afterEach(async ({ request }) => {
-      await test.step(`Cleanup from ${profile.name}`, async () => {
-        await cleanupFromProfile(request, profile, ctx)
-      })
-    })
-
-    return { ctx: () => ctx }
-  })
-}
-
 test.describe('Signup by Employee ID', () => {
   test.describe('with national ID', () => {
-    let ctx: SeedContext
-
-    test.beforeEach(async ({ request }) => {
-      await test.step('Seed from employeeIdSignupProfile', async () => {
-        ctx = await seedFromProfile(request, employeeIdSignupProfile)
-      })
-    })
-
-    test.afterEach(async ({ request }) => {
-      await test.step('Cleanup from employeeIdSignupProfile', async () => {
-        await cleanupFromProfile(request, employeeIdSignupProfile, ctx)
-      })
-    })
+    const { beforeEach, afterEach, getContext } = setupSeedTeardown(
+      employeeIdSignupProfile
+    )
+    test.beforeEach(beforeEach)
+    test.afterEach(afterEach)
 
     test('should complete full signup flow using national ID', async ({
       request,
     }) => {
+      const ctx = getContext()
       await runSignupFlow(request, ctx, ctx.identifiers.national_id!)
     })
   })
 
   test.describe('with passport number', () => {
-    let ctx: SeedContext
-
-    test.beforeEach(async ({ request }) => {
-      await test.step('Seed from employeeIdPassportSignupProfile', async () => {
-        ctx = await seedFromProfile(request, employeeIdPassportSignupProfile)
-      })
-    })
-
-    test.afterEach(async ({ request }) => {
-      await test.step('Cleanup from employeeIdPassportSignupProfile', async () => {
-        await cleanupFromProfile(request, employeeIdPassportSignupProfile, ctx)
-      })
-    })
+    const { beforeEach, afterEach, getContext } = setupSeedTeardown(
+      employeeIdPassportSignupProfile
+    )
+    test.beforeEach(beforeEach)
+    test.afterEach(afterEach)
 
     test('should complete full signup flow using passport number', async ({
       request,
     }) => {
+      const ctx = getContext()
       await runSignupFlow(request, ctx, ctx.identifiers.passport_no!)
     })
   })

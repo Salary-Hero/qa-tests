@@ -66,14 +66,20 @@ async function runCleanup(
   ctx: SeedContext,
   phase: 'pre-seed' | 'post-test'
 ): Promise<void> {
-  for (const step of profile.cleanupSteps) {
+  for (let i = 0; i < profile.cleanupSteps.length; i++) {
+    const step = profile.cleanupSteps[i]
     try {
       await step(request, ctx)
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn(
-        `[seed:${profile.name}] ${phase} cleanup step failed (ignored):`,
-        err instanceof Error ? err.message : err
+        `[seed:${profile.name}] ${phase} cleanup step ${i + 1}/${profile.cleanupSteps.length} failed (ignored)`,
+        {
+          stepName: step.name,
+          error: err instanceof Error ? err.message : String(err),
+          identifiers: ctx.identifiers,
+          employeeId: ctx.employee.user_id,
+        }
       )
     }
   }

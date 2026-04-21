@@ -1,8 +1,25 @@
 import { APIRequestContext } from '@playwright/test'
+import { z } from 'zod'
 import { endpoints } from '../../shared/endpoints'
 import { Company } from '../../shared/utils/seed-config'
+import { generatePhone, generateAccountNo } from './identifiers'
 import { Identifiers } from './seed'
 import { getAdminToken } from './admin-auth'
+
+const EmployeeRecordSchema = z.object({
+  user_id: z.union([z.string(), z.number()]),
+  company_id: z.union([z.string(), z.number()]),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+  employee_id: z.string().optional(),
+  line_id: z.string().optional(),
+})
+
+const EmployeeSearchResponseSchema = z.object({
+  data: z.array(EmployeeRecordSchema).optional(),
+})
+
+export type EmployeeRecord = z.infer<typeof EmployeeRecordSchema>
 
 export type MatchField = 'phone' | 'line_id' | 'email' | 'employee_id'
 
@@ -43,15 +60,7 @@ export type CreateEmployeePayload = {
   }
 }
 
-function generateUniquePhone(): string {
-  const suffix = `${Date.now()}${Math.floor(Math.random() * 100)}`.slice(-8)
-  return `08${suffix}`
-}
 
-function generateUniqueAccountNo(): string {
-  const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`.slice(-9)
-  return `1${suffix}`
-}
 
 export function buildMonthlyEmployeePayload(opts: {
   company: Company
@@ -68,11 +77,9 @@ export function buildMonthlyEmployeePayload(opts: {
       middle_name: '',
       last_name: nameSuffix,
       email: identifiers.email ?? '',
-      phone: identifiers.phone ?? generateUniquePhone(),
+      phone: identifiers.phone ?? generatePhone(),
       company_id: String(company.id),
-      employee_id:
-        identifiers.employee_id ??
-        `EMP${Date.now()}${Math.floor(Math.random() * 100)}`,
+      employee_id: identifiers.employee_id ?? '',
       salary: 50000,
       national_id: identifiers.national_id ?? '',
       birthday_at: '1990-01-01T00:00:00.000Z',
@@ -95,7 +102,7 @@ export function buildMonthlyEmployeePayload(opts: {
     bank: {
       bank_code: '014',
       account_name: '',
-      account_no: generateUniqueAccountNo(),
+      account_no: generateAccountNo(),
     },
   }
 }
@@ -106,18 +113,19 @@ export async function createEmployee(
   payload: CreateEmployeePayload
 ): Promise<{ user_id: string }> {
   const token = await getAdminToken(request)
+  const url = endpoints.admin.createEmployee(company.id)
 
-  const response = await request.post(
-    endpoints.admin.createEmployee(company.id),
-    {
-      data: payload,
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  )
+  const response = await request.post(url, {
+    data: payload,
+    headers: { Authorization: `Bearer ${token}` },
+  })
 
   if (!response.ok()) {
     throw new Error(
-      `createEmployee failed: ${response.status()} ${await response.text()}`
+      `createEmployee failed\n` +
+        `  POST ${url}\n` +
+        `  Status: ${response.status()}\n` +
+        `  Response: ${await response.text()}`
     )
   }
 
@@ -132,17 +140,18 @@ export async function deleteEmployee(
   if (!userId) return
 
   const token = await getAdminToken(request)
+  const url = endpoints.admin.deleteEmployee(userId)
 
-  const response = await request.delete(
-    endpoints.admin.deleteEmployee(userId),
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  )
+  const response = await request.delete(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 
   if (!response.ok() && response.status() !== 404) {
     throw new Error(
-      `deleteEmployee failed: ${response.status()} ${await response.text()}`
+      `deleteEmployee failed\n` +
+        `  DELETE ${url}\n` +
+        `  Status: ${response.status()}\n` +
+        `  Response: ${await response.text()}`
     )
   }
 }
@@ -156,8 +165,9 @@ export async function findEmployeeByIdentifier(
   if (!identifier) return null
 
   const token = await getAdminToken(request)
+  const url = endpoints.admin.searchEmployee
 
-  const response = await request.get(endpoints.admin.searchEmployee, {
+  const response = await request.get(url, {
     params: {
       page: '1',
       per_page: '10',
@@ -169,14 +179,25 @@ export async function findEmployeeByIdentifier(
 
   if (!response.ok()) {
     throw new Error(
-      `findEmployeeByIdentifier failed: ${response.status()} ${await response.text()}`
+      `findEmployeeByIdentifier failed\n` +
+        `  GET ${url}?search=${identifier}\n` +
+        `  Status: ${response.status()}\n` +
+        `  Response: ${await response.text()}`
     )
   }
 
   const body = await response.json()
-  const match = (body.data ?? []).find(
-    (e: Record<string, unknown>) =>
-      e[matchField] === identifier &&
+  const parsed = EmployeeSearchResponseSchema.safeParse(body)
+  if (!parsed.success) {
+    throw new Error(
+      `findEmployeeByIdentifier returned invalid response: ${parsed.error.message}`
+    )
+  }
+
+  const records = parsed.data.data ?? []
+  const match = records.find(
+    (e) =>
+      String(e[matchField]) === identifier &&
       String(e.company_id) === String(company.id)
   )
 

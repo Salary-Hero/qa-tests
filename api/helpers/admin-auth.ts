@@ -1,6 +1,7 @@
 import { APIRequestContext } from '@playwright/test'
 import { endpoints } from '../../shared/endpoints'
-import { ADMIN_EMAIL, ADMIN_PASSWORD } from '../../shared/utils/env'
+import { ADMIN_EMAIL, ADMIN_PASSWORD, ENV } from '../../shared/utils/env'
+import { ENV_ERRORS } from '../../shared/utils/error-messages'
 
 /**
  * Module-level token cache keyed by ENV string.
@@ -18,19 +19,20 @@ export async function getAdminToken(
   }
 
   if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-    throw new Error(
-      'Admin credentials are not configured. ' +
-        'Set ADMIN_EMAIL_<ENV> and ADMIN_PASSWORD_<ENV> in your .env file.'
-    )
+    throw new Error(ENV_ERRORS.ADMIN_CREDENTIALS(ENV))
   }
 
-  const response = await request.post(endpoints.admin.login, {
+  const url = endpoints.admin.login
+  const response = await request.post(url, {
     data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
   })
 
   if (!response.ok()) {
     throw new Error(
-      `Admin login failed: ${response.status()} ${await response.text()}`
+      `Admin login failed\n` +
+        `  POST ${url}\n` +
+        `  Status: ${response.status()}\n` +
+        `  Response: ${await response.text()}`
     )
   }
 
