@@ -118,7 +118,7 @@ test.describe('Signup by Phone', () => {
 
     expect(verifyPinResponseBody.message).toBe('Create PIN successfully');
 
-    // 6. Token Firebase Before PIN Code Verify
+    // 6. Token Firebase After PIN Code Verify
     const secureTokenAfterPinResponse = await request.post(endpoints.secureFirebaseToken,{
       data: {
         grant_type: 'refresh_token',
