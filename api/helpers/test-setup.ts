@@ -37,7 +37,9 @@ export function setupSeedTeardown(profile: SeedProfile) {
     },
 
     afterEach: async ({ request }: { request: APIRequestContext }) => {
-      await cleanupFromProfile(request, profile, ctx)
+      if (ctx) {
+        await cleanupFromProfile(request, profile, ctx)
+      }
     },
 
     /**

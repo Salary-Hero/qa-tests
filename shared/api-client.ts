@@ -67,12 +67,6 @@ export async function makeApiRequest<T = any>(
       headers: responseHeaders as Record<string, string>,
     };
 
-    if (response.ok()) {
-      console.log(`✅ ${method} ${url} - Status ${response.status()}`);
-    } else {
-      console.log(`⚠️ ${method} ${url} - Status ${response.status()}`);
-    }
-
     return result;
   } catch (error) {
     console.error(`❌ ${method} ${url} - Error:`, error);

@@ -176,7 +176,6 @@ export async function deleteEmployeeViaAPIWithFallback(
       // Lazy import to avoid circular dependency
       const { deleteEmployeeByUserId } = await import('./test-helpers');
       await deleteEmployeeByUserId(userId);
-      console.log(`Fallback deletion succeeded for ${userId}`);
       return false;
     } catch (fallbackError) {
       throw new Error(

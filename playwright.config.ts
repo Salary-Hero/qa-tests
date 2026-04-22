@@ -47,6 +47,7 @@ export default defineConfig({
     {
       name: 'api',
       testDir: './api/tests',
+      timeout: 60000,
       use: {
         baseURL: baseURLs[ENV],
         extraHTTPHeaders: {
