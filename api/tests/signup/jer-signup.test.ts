@@ -117,8 +117,26 @@ test.describe('Phone Signup', () => {
     console.log('verifyPinTokenResponseBody', verifyPinTokenResponseBody)
 
     expect(verifyPinTokenResponseBody.idToken).not.toBeNull()
+    // get porfile
+    const getProfileResponse = await request.get(testEndpoint.getProfile, {
+      headers: {
+        Authorization: `Bearer ${verifyPinTokenResponseBody.id_token}`,
+        'x-app-version': '4.7.0',
+      },
+    })
 
-    // Get Profile
-    const getProfileResponse = await request.get(testEndpoint.getProfile, {})
+    const getProfileResponseBody = await getProfileResponse.json()
+    console.log('getProfileResponseBody', getProfileResponseBody)
+
+    expect(getProfileResponseBody.profile.has_pin_code).not.toBeNull()
+    expect(getProfileResponseBody.profile.phone).toBe(testData.phone)
+    expect(getProfileResponseBody.profile.user_id).toBe(
+      getProfileResponseBody.profile.user_id
+    )
+    expect(getProfileResponseBody.profile.status).toBe('active')
+    expect(getProfileResponseBody.profile.signup_at).not.toBeNull()
+    expect(getProfileResponseBody.profile.company_id).toBe(
+      getProfileResponseBody.profile.company_id
+    )
   })
 })
