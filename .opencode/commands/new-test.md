@@ -1,5 +1,6 @@
 ---
 description: Scaffold a new test feature following project structure and standards
+skill: qa-engineering-lead
 ---
 
 Scaffold a new test feature named `$ARGUMENTS`. Follow all rules in `.opencode/AGENTS.md`.

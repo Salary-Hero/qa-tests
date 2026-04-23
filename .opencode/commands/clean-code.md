@@ -1,5 +1,6 @@
 ---
 description: Scan a file for code quality issues and fix them all
+skill: qa-engineering-lead
 ---
 
 Review `$ARGUMENTS` against all rules in `.opencode/AGENTS.md`, then immediately fix every issue found.
