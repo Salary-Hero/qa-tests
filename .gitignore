@@ -11,3 +11,4 @@ test-results/
 .opencode/plans/
 test-report.json
 yarn.lock
+package-lock.json
