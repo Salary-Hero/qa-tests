@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test'
-import { OTP, PINCODE } from '../../../shared/utils/env'
-import { phoneSignupProfile } from '../../helpers/profiles/phone'
+import { OTP, PINCODE, LINE_CHANNEL_ID } from '../../../shared/utils/env'
+import { SeedContext } from '../../helpers/seed'
+import { lineSignupProfile } from '../../helpers/profiles/line'
+import { getLineAccessToken } from '../../helpers/line-auth'
 import {
   firebaseSignIn,
   firebaseRefreshToken as firebaseRefreshTokenAPI,
@@ -8,8 +10,9 @@ import {
 import { setupSeedTeardown } from '../../helpers/test-setup'
 import { validateSchema } from '../../../shared/utils/schema'
 import {
-  OtpRequestSchema,
-  OtpVerifySchema,
+  LineSignupSchema,
+  LineOtpRequestSchema,
+  LineOtpVerifySchema,
   FirebaseSignInSchema,
   FirebaseRefreshSchema,
   CreatePinSchema,
@@ -19,54 +22,78 @@ import { endpoints } from '../../../shared/endpoints'
 import {
   DEFAULT_REQUEST_HEADERS,
   AUTH_HEADERS,
-  PHONE_VERIFY_PARAMS,
 } from '../../helpers/request'
 
-test.describe('Signup by Phone', () => {
+test.describe('Signup by LINE', () => {
+  test.describe.configure({ mode: 'serial' })
   const { beforeEach, afterEach, getContext } = setupSeedTeardown(
-    phoneSignupProfile
+    lineSignupProfile
   )
   test.beforeEach(beforeEach)
   test.afterEach(afterEach)
 
-  test('should complete full signup flow for a valid phone number', async ({
+  test('should complete full signup flow for a valid LINE account', async ({
     request,
   }) => {
     const ctx = getContext()
-    const phone = ctx.identifiers.phone!
+    const { line_id, phone } = ctx.identifiers
+
+    let authChallenge: string
     let refCode: string
     let firebaseCustomToken: string
     let firebaseRefreshToken: string
     let idTokenPrePin: string
     let idTokenPostPin: string
 
-    await test.step('Request OTP', async () => {
-      const response = await request.post(endpoints.signup.requestOtp, {
-        data: { phone },
+    await test.step('Submit LINE access token to get auth challenge', async () => {
+      const lineAccessToken = await getLineAccessToken(request)
+
+      const response = await request.post(endpoints.signup.lineSignup, {
+        data: {
+          channel_id: LINE_CHANNEL_ID,
+          access_token: lineAccessToken,
+          fcm_token: '',
+        },
         headers: DEFAULT_REQUEST_HEADERS,
       })
 
       expect(response.status()).toBe(200)
       const body = await response.json()
-      validateSchema(body, OtpRequestSchema, 'OTP request')
+      validateSchema(body, LineSignupSchema, 'LINE signup')
       expect(body.is_signup).toBe(false)
-      expect(body.next_state).toBe('signup.phone.verify')
-      refCode = body.verification_info.ref_code as string
+      authChallenge = body.verification_info.auth_challenge as string
+    })
+
+    await test.step('Request OTP for phone', async () => {
+      const response = await request.post(endpoints.signup.lineAddPhone, {
+        params: { verification_method: 'otp', action: 'request' },
+        data: { phone, auth_challenge: authChallenge },
+        headers: DEFAULT_REQUEST_HEADERS,
+      })
+
+      expect(response.status()).toBe(200)
+      const body = await response.json()
+      validateSchema(body, LineOtpRequestSchema, 'LINE OTP request')
+      refCode = body.verification.ref_code as string
     })
 
     await test.step('Verify OTP', async () => {
-      const response = await request.post(endpoints.signup.verifyOtp, {
-        params: PHONE_VERIFY_PARAMS,
-        data: { phone, ref_code: refCode, code: OTP },
+      const response = await request.post(endpoints.signup.lineAddPhone, {
+        params: { verification_method: 'otp', action: 'verify' },
+        data: {
+          phone,
+          auth_challenge: authChallenge,
+          fcm_token: '',
+          authMethod: 'line',
+          verification: { ref_code: refCode, code: OTP },
+        },
         headers: DEFAULT_REQUEST_HEADERS,
       })
 
       expect(response.status()).toBe(200)
       const body = await response.json()
-      validateSchema(body, OtpVerifySchema, 'OTP verify')
-      expect(body.is_signup).toBe(true)
-      expect(body.next_state).toBe('user.profile')
-      firebaseCustomToken = body.verification_info.token as string
+      validateSchema(body, LineOtpVerifySchema, 'LINE OTP verify')
+      firebaseCustomToken = body.verification.token as string
     })
 
     await test.step('Firebase sign in with custom token', async () => {
@@ -75,14 +102,9 @@ test.describe('Signup by Phone', () => {
       firebaseRefreshToken = result.refreshToken
     })
 
-
     await test.step('Get Firebase ID token (pre-PIN)', async () => {
       const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
-      validateSchema(
-        result,
-        FirebaseRefreshSchema,
-        'Firebase refresh (pre-PIN)'
-      )
+      validateSchema(result, FirebaseRefreshSchema, 'Firebase refresh (pre-PIN)')
       idTokenPrePin = result.id_token as string
     })
 
@@ -100,11 +122,7 @@ test.describe('Signup by Phone', () => {
 
     await test.step('Get Firebase ID token (post-PIN)', async () => {
       const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
-      validateSchema(
-        result,
-        FirebaseRefreshSchema,
-        'Firebase refresh (post-PIN)'
-      )
+      validateSchema(result, FirebaseRefreshSchema, 'Firebase refresh (post-PIN)')
       idTokenPostPin = result.id_token as string
     })
 
@@ -116,7 +134,7 @@ test.describe('Signup by Phone', () => {
       expect(response.status()).toBe(200)
       const body = await response.json()
       validateSchema(body, GetProfileSchema, 'Get profile')
-      expect(body.profile.phone).toBe(phone)
+      expect(body.profile.line_id).toBe(line_id)
       expect(body.profile.has_pincode).toBe(true)
       expect(body.profile.signup_at).not.toBeNull()
     })
