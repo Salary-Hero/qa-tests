@@ -1,6 +1,6 @@
 # Test Coverage Matrix
 
-Last updated: 2026-04-21 | Total: **9/9 passing (100%)**
+Last updated: 2026-04-23 | Total: **13/13 passing (100%)**
 
 ## Test Cases
 
@@ -15,6 +15,10 @@ Last updated: 2026-04-21 | Total: **9/9 passing (100%)**
 | TC-SIGN-002 | Signup: LINE | `signup/signup-line.test.ts:35` | `POST /signup/line + /signup/line/phone` | LINE → OTP → Firebase | users, user_identity | Critical | ✅ PASS |
 | TC-SIGN-003 | Signup: Employee ID | `signup/signup-employee-id.test.ts:152` | `POST /signup/employee-id/lookup+phone` | OTP → Firebase | users, user_identity | High | ✅ PASS |
 | TC-SIGN-004 | Signup: Employee ID | `signup/signup-employee-id.test.ts:167` | `POST /signup/employee-id/lookup+phone` | OTP → Firebase | users, user_identity | High | ✅ PASS |
+| TC-CONSENT-001 | Digital Consent | `digital-consent/digital-consent.test.ts` | `POST/PUT /screening-import/*` (7 steps) | Bearer | employee_profile | Critical | ✅ PASS |
+| TC-CONSENT-002 | Digital Consent | `digital-consent/digital-consent.test.ts` | `/consent/screening/validate`, `/request-form/request+verify`, Firebase, `/pincode/create`, `/profile` | Bearer + OTP → Firebase | employee_profile, users | Critical | ✅ PASS |
+| TC-CONSENT-003 | Digital Consent | `digital-consent/digital-consent.test.ts` | Same as TC-CONSENT-002 | Bearer + OTP → Firebase | employee_profile, users | High | ✅ PASS |
+| TC-CONSENT-004 | Digital Consent | `digital-consent/digital-consent.test.ts` | None (DB check only) | — | employee_profile | High | ✅ PASS |
 
 ## Summary by Feature
 
@@ -24,7 +28,8 @@ Last updated: 2026-04-21 | Total: **9/9 passing (100%)**
 | Signup: Phone | 1 | ✅ 1 | Critical |
 | Signup: LINE | 1 | ✅ 1 | Critical |
 | Signup: Employee ID | 2 | ✅ 2 | High |
-| **Total** | **9** | **✅ 9** | |
+| Digital Consent | 4 | ✅ 4 | Critical + High |
+| **Total** | **13** | **✅ 13** | |
 
 ## Summary by Operation
 
@@ -37,3 +42,6 @@ Last updated: 2026-04-21 | Total: **9/9 passing (100%)**
 | LINE signup | TC-SIGN-002 | ✅ |
 | PIN creation | TC-SIGN-001, TC-SIGN-002, TC-SIGN-003, TC-SIGN-004 | ✅ |
 | Profile verification | TC-SIGN-001, TC-SIGN-002, TC-SIGN-003, TC-SIGN-004 | ✅ |
+| Consent import | TC-CONSENT-001 | 🔲 |
+| Consent signup | TC-CONSENT-002, TC-CONSENT-003 | 🔲 |
+| DB state check | TC-CONSENT-001, TC-CONSENT-004 | 🔲 |
