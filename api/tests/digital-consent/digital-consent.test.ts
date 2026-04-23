@@ -101,8 +101,6 @@ test.describe('Digital Consent', () => {
     })
   })
 
-  // ---------------------------------------------------------------------------
-
   test('TC-CONSENT-001 · Import — verify all 4 records created with consent_status = new', async () => {
     await test.step('Verify 4 employee_profile rows exist with consent_status = new', async () => {
       const rows = await getEmployeeProfiles(TEST_EMPLOYEE_IDS, COMPANY_ID)
@@ -113,8 +111,6 @@ test.describe('Digital Consent', () => {
       }
     })
   })
-
-  // ---------------------------------------------------------------------------
 
   test('TC-CONSENT-002 · Signup with national_id — verify consent_status = pending_review', async ({
     request,
@@ -240,8 +236,6 @@ test.describe('Digital Consent', () => {
     })
   })
 
-  // ---------------------------------------------------------------------------
-
   test('TC-CONSENT-003 · Signup with passport_no — verify consent_status = pending_review', async ({
     request,
   }) => {
@@ -365,8 +359,6 @@ test.describe('Digital Consent', () => {
       }
     })
   })
-
-  // ---------------------------------------------------------------------------
 
   test('TC-CONSENT-004 · Non-signed-up employees remain consent_status = new', async () => {
     await test.step('DB — verify TS01902 and TS01903 still have consent_status = new', async () => {
