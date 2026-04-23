@@ -5,7 +5,7 @@
  * Provides consistent beforeEach/afterEach behavior.
  */
 
-import { APIRequestContext } from '@playwright/test'
+import { test, APIRequestContext } from '@playwright/test'
 import {
   seedFromProfile,
   cleanupFromProfile,
@@ -33,13 +33,17 @@ export function setupSeedTeardown(profile: SeedProfile) {
 
   return {
     beforeEach: async ({ request }: { request: APIRequestContext }) => {
-      ctx = await seedFromProfile(request, profile)
+      await test.step('Seed test data', async () => {
+        ctx = await seedFromProfile(request, profile)
+      })
     },
 
     afterEach: async ({ request }: { request: APIRequestContext }) => {
-      if (ctx) {
-        await cleanupFromProfile(request, profile, ctx)
-      }
+      await test.step('Cleanup test data', async () => {
+        if (ctx) {
+          await cleanupFromProfile(request, profile, ctx)
+        }
+      })
     },
 
     /**

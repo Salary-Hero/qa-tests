@@ -9,8 +9,14 @@ import {
   firebaseRefreshToken as firebaseRefreshTokenAPI,
 } from '../../helpers/firebase'
 import { validateSchema } from '../../../shared/utils/schema'
-import { query } from '../../../shared/db'
+import {
+  findSignedUpUserIds,
+  deleteEmployeeProfileRecords,
+  getEmployeeProfiles,
+  getEmployeeConsentStatus,
+} from '../../../shared/db-helpers'
 import { endpoints } from '../../../shared/endpoints'
+import { getCompany } from '../../../shared/utils/seed-config'
 import { seedConfigForEnv } from '../../../shared/utils/seed-config'
 import { PINCODE } from '../../../shared/utils/env'
 import { DEFAULT_REQUEST_HEADERS, AUTH_HEADERS } from '../../helpers/request'
@@ -20,7 +26,7 @@ import {
   ConsentVerifyFormSchema,
 } from '../../schema/digital-consent.schema'
 
-const COMPANY_ID = 514
+const COMPANY_ID = getCompany('digital_consent').id
 const TEST_EMPLOYEES = [
   { employee_id: 'TS01900', national_id: '2001000099000', passport_no: 'TSPP1900' },
   { employee_id: 'TS01901', national_id: '2001000099001', passport_no: 'TSPP1901' },
@@ -39,47 +45,15 @@ const TEST_PASSPORT_NOS = TEST_EMPLOYEES.map((e) => e.passport_no)
  * user_balance, and users.
  */
 async function cleanupSignedUpUsers(request: APIRequestContext) {
-  const { rows } = await query<{ legacy_user_id: string }>(
-    `SELECT DISTINCT legacy_user_id
-     FROM user_identity
-     WHERE national_id = ANY($1::text[])
-        OR passport_no = ANY($2::text[])`,
-    [TEST_NATIONAL_IDS, TEST_PASSPORT_NOS]
-  )
+  const userIds = await findSignedUpUserIds(TEST_NATIONAL_IDS, TEST_PASSPORT_NOS)
 
-  for (const { legacy_user_id } of rows) {
+  for (const userId of userIds) {
     try {
-      await deleteEmployee(request, legacy_user_id)
+      await deleteEmployee(request, userId)
     } catch {
       // best-effort — user may already be gone
     }
   }
-}
-
-/**
- * Removes employee_profile records for test employees.
- * Must delete from employee_profile_audit first (FK constraint).
- * Hard delete is required — soft delete is not sufficient because the import
- * worker treats soft-deleted rows with consent_status='pending_review' as
- * already signed up and refuses to re-create records for those employee_ids.
- */
-async function cleanupEmployeeProfileRecords() {
-  await query(
-    `DELETE FROM employee_profile_audit
-     WHERE employee_profile_id IN (
-       SELECT id FROM employee_profile
-       WHERE employee_id = ANY($1::text[])
-         AND company_id = $2
-     )`,
-    [TEST_EMPLOYEE_IDS, COMPANY_ID]
-  )
-
-  await query(
-    `DELETE FROM employee_profile
-     WHERE employee_id = ANY($1::text[])
-       AND company_id = $2`,
-    [TEST_EMPLOYEE_IDS, COMPANY_ID]
-  )
 }
 
 test.describe('Digital Consent', () => {
@@ -94,7 +68,7 @@ test.describe('Digital Consent', () => {
     })
 
     await test.step('Cleanup employee_profile records from previous runs', async () => {
-      await cleanupEmployeeProfileRecords()
+      await deleteEmployeeProfileRecords(TEST_EMPLOYEE_IDS, COMPANY_ID)
     })
 
     await test.step('Login as admin', async () => {
@@ -109,32 +83,32 @@ test.describe('Digital Consent', () => {
   })
 
   test.afterAll(async ({ request }) => {
-    await cleanupSignedUpUsers(request)
-    await cleanupEmployeeProfileRecords()
+    await test.step('Cleanup signed-up users', async () => {
+      await cleanupSignedUpUsers(request)
+    })
+
+    await test.step('Cleanup employee_profile records', async () => {
+      await deleteEmployeeProfileRecords(TEST_EMPLOYEE_IDS, COMPANY_ID)
+    })
   })
 
   test.afterEach(async ({ request }) => {
-    if (signedUpUserId) {
-      await deleteEmployee(request, signedUpUserId)
-      signedUpUserId = null
-    }
+    await test.step('Cleanup signed-up user from this test', async () => {
+      if (signedUpUserId) {
+        await deleteEmployee(request, signedUpUserId)
+        signedUpUserId = null
+      }
+    })
   })
 
   // ---------------------------------------------------------------------------
 
   test('TC-CONSENT-001 · Import — verify all 4 records created with consent_status = new', async () => {
     await test.step('Verify 4 employee_profile rows exist with consent_status = new', async () => {
-      const result = await query<{ employee_id: string; consent_status: string }>(
-        `SELECT employee_id, consent_status
-         FROM employee_profile
-         WHERE employee_id = ANY($1::text[])
-           AND company_id = $2
-           AND deleted_at IS NULL`,
-        [TEST_EMPLOYEE_IDS, COMPANY_ID]
-      )
+      const rows = await getEmployeeProfiles(TEST_EMPLOYEE_IDS, COMPANY_ID)
 
-      expect(result.rowCount).toBe(4)
-      for (const row of result.rows) {
+      expect(rows.length).toBe(4)
+      for (const row of rows) {
         expect(row.consent_status).toBe('new')
       }
     })
@@ -250,14 +224,9 @@ test.describe('Digital Consent', () => {
     })
 
     await test.step('DB — verify consent_status = pending_review', async () => {
-      const result = await query<{ consent_status: string }>(
-        `SELECT consent_status FROM employee_profile
-         WHERE employee_id = $1 AND company_id = $2 AND deleted_at IS NULL`,
-        [employee.employee_id, COMPANY_ID]
-      )
+      const status = await getEmployeeConsentStatus(employee.employee_id, COMPANY_ID)
 
-      expect(result.rowCount).toBe(1)
-      expect(result.rows[0].consent_status).toBe('pending_review')
+      expect(status).toBe('pending_review')
     })
 
     await test.step('Logout (best-effort)', async () => {
@@ -381,14 +350,9 @@ test.describe('Digital Consent', () => {
     })
 
     await test.step('DB — verify consent_status = pending_review', async () => {
-      const result = await query<{ consent_status: string }>(
-        `SELECT consent_status FROM employee_profile
-         WHERE employee_id = $1 AND company_id = $2 AND deleted_at IS NULL`,
-        [employee.employee_id, COMPANY_ID]
-      )
+      const status = await getEmployeeConsentStatus(employee.employee_id, COMPANY_ID)
 
-      expect(result.rowCount).toBe(1)
-      expect(result.rows[0].consent_status).toBe('pending_review')
+      expect(status).toBe('pending_review')
     })
 
     await test.step('Logout (best-effort)', async () => {
@@ -408,17 +372,10 @@ test.describe('Digital Consent', () => {
     await test.step('DB — verify TS01902 and TS01903 still have consent_status = new', async () => {
       const nonSignedUpIds = [TEST_EMPLOYEES[2].employee_id, TEST_EMPLOYEES[3].employee_id]
 
-      const result = await query<{ employee_id: string; consent_status: string }>(
-        `SELECT employee_id, consent_status
-         FROM employee_profile
-         WHERE employee_id = ANY($1::text[])
-           AND company_id = $2
-           AND deleted_at IS NULL`,
-        [nonSignedUpIds, COMPANY_ID]
-      )
+      const rows = await getEmployeeProfiles(nonSignedUpIds, COMPANY_ID)
 
-      expect(result.rowCount).toBe(2)
-      for (const row of result.rows) {
+      expect(rows.length).toBe(2)
+      for (const row of rows) {
         expect(row.consent_status).toBe('new')
       }
     })

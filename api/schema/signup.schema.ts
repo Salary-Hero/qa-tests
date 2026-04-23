@@ -43,7 +43,8 @@ export const FirebaseRefreshSchema = z.object({
   id_token: z.string(),
   access_token: z.string(),
   refresh_token: z.string(),
-  expires_in: z.string(),
+  expires_in: z.union([z.number(), z.string()]),
+  token_type: z.string().optional(),
 })
 
 /** Step 5: POST /api/v1/user/account/profile/pincode/create */
@@ -137,6 +138,10 @@ export const GetProfileSchema = z.object({
     has_pincode: z.boolean(),
     signup_at: z.string().nullable(),
     employee_type: z.string(),
+    // Optional fields present only for specific auth methods or consent flows
+    employee_id: z.string().optional(),
+    line_id: z.string().nullable().optional(),
+    is_consent_accepted: z.boolean().optional(),
   }),
   bank_account: z.object({
     bank_code: z.string(),

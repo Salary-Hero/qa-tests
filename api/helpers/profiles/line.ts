@@ -8,7 +8,7 @@ import { generatePhone, generateEmail, generateEmployeeId } from '../identifiers
 import { CleanupStep, Employee, SeedProfile } from '../seed'
 import { getCompany, getFixedIdentifier } from '../../../shared/utils/seed-config'
 import { getAdminToken } from '../admin-auth'
-import { updateEmployeeViaAPI } from '../../../shared/employee-api'
+import { updateEmployeeViaAPI, EmployeePayload } from '../../../shared/employee-api'
 
 const cleanupEmployee: CleanupStep = async (request, ctx) => {
   let userId = ctx.employee.user_id
@@ -18,9 +18,8 @@ const cleanupEmployee: CleanupStep = async (request, ctx) => {
   if (userId) {
     try {
       const token = await getAdminToken(request)
-      await updateEmployeeViaAPI(request, token, Number(userId), {
-        information: { line_id: null },
-      } as any)
+      const clearLineId: Partial<EmployeePayload> = { information: { first_name: '', line_id: null } }
+      await updateEmployeeViaAPI(request, token, Number(userId), clearLineId)
     } catch {
       // If update fails, continue anyway - best-effort cleanup
     }
@@ -41,9 +40,8 @@ const cleanupEmployee: CleanupStep = async (request, ctx) => {
       if (found?.user_id) {
         try {
           const token = await getAdminToken(request)
-          await updateEmployeeViaAPI(request, token, Number(found.user_id), {
-            information: { line_id: null },
-          } as any)
+          const clearLineId: Partial<EmployeePayload> = { information: { first_name: '', line_id: null } }
+          await updateEmployeeViaAPI(request, token, Number(found.user_id), clearLineId)
         } catch {
           // If update fails, continue anyway - best-effort cleanup
         }

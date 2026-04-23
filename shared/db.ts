@@ -3,14 +3,14 @@ import { Pool, PoolClient } from 'pg';
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'showhire_dev',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
+  database: process.env.DB_NAME,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
 });
 
-export async function query<T = any>(
+export async function query<T = unknown>(
   text: string,
-  params?: any[]
+  params?: unknown[]
 ): Promise<{ rows: T[]; rowCount: number }> {
   try {
     const result = await pool.query(text, params);

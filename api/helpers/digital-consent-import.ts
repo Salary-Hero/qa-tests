@@ -4,6 +4,8 @@ import * as path from 'path'
 import { endpoints } from '../../shared/endpoints'
 import { validateSchema } from '../../shared/utils/schema'
 import { ENV } from '../../shared/utils/env'
+import { getCompany } from '../../shared/utils/seed-config'
+import { baseURLs } from '../../playwright.config'
 import {
   ImportJobSchema,
   ImportMappingSchema,
@@ -13,16 +15,13 @@ import {
 
 const FIXTURE_PATH = path.resolve(__dirname, '../fixtures/digital-consent-import.xlsx')
 
-const COMPANY_ID = 514
+const COMPANY_ID = getCompany('digital_consent').id
 
 // Playwright's extraHTTPHeaders sets Content-Type: application/json globally.
 // For multipart file uploads, this conflicts with the required multipart/form-data boundary.
 // We use native fetch for Step 1 (file upload) to bypass this limitation.
-const API_HOST: Record<string, string> = {
-  dev: 'https://apiv2-dev.salary-hero.com',
-  staging: 'https://apiv2-staging.salary-hero.com',
-}
-const apiHost = API_HOST[ENV] ?? API_HOST.dev
+// baseURLs is sourced from playwright.config.ts — the single source of truth for API hosts.
+const apiHost = baseURLs[ENV] ?? baseURLs.dev
 
 /**
  * Runs the full 7-step Digital Consent import pipeline.
@@ -57,7 +56,7 @@ export async function importDigitalConsentData(
   if (!createFetchResponse.ok) {
     throw new Error(`Step 1 Create Job failed: ${createFetchResponse.status} ${await createFetchResponse.text()}`)
   }
-  const createBody = await createFetchResponse.json() as Record<string, any>
+  const createBody = await createFetchResponse.json() as { job_id: string }
   validateSchema(createBody, ImportJobSchema, 'Create Job')
   const jobId: string = createBody.job_id
 

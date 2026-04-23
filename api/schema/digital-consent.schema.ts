@@ -39,8 +39,8 @@ export const ImportPreviewSchema = z.object({
   config: ImportJobConfigSchema,
   preview: z.object({
     create_rows: z.array(PreviewRowSchema),
-    update_rows: z.array(z.any()),
-    delete_rows: z.array(z.any()),
+    update_rows: z.array(z.unknown()),
+    delete_rows: z.array(z.unknown()),
     create_num_row: z.number(),
     update_num_row: z.number(),
     delete_num_row: z.number(),
@@ -53,6 +53,7 @@ export const ImportSuccessSchema = z.object({
 
 // --- Consent signup schemas (steps 8–10) ---
 
+// TODO: define full schema once the response contract is confirmed
 export const ScreeningValidateSchema = z.object({}).passthrough()
 
 export const ConsentRequestFormSchema = z.object({
@@ -64,7 +65,15 @@ export const ConsentRequestFormSchema = z.object({
 export const ConsentVerifyFormSchema = z.object({
   verification_info: z.object({
     token: z.string().regex(/^ey/),
-    profile: z.any(),
-    company: z.any(),
+    profile: z.object({
+      user_id: z.string(),
+      has_pincode: z.boolean(),
+      signup_at: z.string().nullable().optional(),
+    }),
+    company: z.object({
+      id: z.number(),
+      name: z.string(),
+      status: z.string(),
+    }),
   }),
 })

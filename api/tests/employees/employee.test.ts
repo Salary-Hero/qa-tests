@@ -1,38 +1,34 @@
 /**
- * Employee API - CRUD Test Suite
- * 
- * Tests the complete employee lifecycle via API:
- * - CREATE: POST /v1/admin/account/employee/{companyId}
- * - READ: GET via API response validation
- * - UPDATE: PATCH /v1/admin/account/employee/{companyId}/{userId}
- * - DELETE: DELETE /v1/admin/account/employee/{userId}
- * 
- * Test Pattern:
- * 1. Login as admin → get Bearer token
- * 2. Setup: Create employee via API
- * 3. Test: Call API operation (create/read/update/delete)
- * 4. Verify: Validate API response
- * 5. Verify: Query database to confirm persistence
- * 6. Cleanup: Delete via API or database (company kept for reuse)
+ * Employee API — CRUD test suite.
+ * Uses getAdminToken() for auth and deleteEmployeeViaAPI() for cleanup.
+ * All employees are created and deleted within each test — no shared state.
  */
 
 import { test, expect } from '@playwright/test';
-import { loginAsAdmin } from '../../../shared/auth';
-import { createEmployeeViaAPI, updateEmployeeViaAPI, deleteEmployeeViaAPIWithFallback, buildEmployeePayload, buildUpdatePayload } from '../../../shared/employee-api';
-import { getUserById } from '../../../shared/test-helpers';
+import { getAdminToken } from '../../helpers/admin-auth';
+import {
+  createEmployeeViaAPI,
+  updateEmployeeViaAPI,
+  deleteEmployeeViaAPI,
+  buildEmployeePayload,
+  buildUpdatePayload,
+  EmployeeResponse,
+  EmployeeInformation,
+} from '../../../shared/employee-api';
+import { getUserById } from '../../../shared/db-helpers';
 
 test.describe('Employee API - CRUD Operations', () => {
   test.describe.configure({ mode: 'serial' });
-  
+
   test('CREATE - Create new employee via API', async ({ request }) => {
     let token: string;
     let userId: number;
 
     await test.step('Login as admin', async () => {
-      token = await loginAsAdmin(request);
+      token = await getAdminToken(request);
     });
 
-    let createdEmployee: any;
+    let createdEmployee: EmployeeResponse;
     let generatedPhone: string;
     await test.step('Create employee with test data', async () => {
       const createPayload = buildEmployeePayload('Alice', {
@@ -63,7 +59,7 @@ test.describe('Employee API - CRUD Operations', () => {
       });
     } finally {
       await test.step('Cleanup - Delete employee', async () => {
-        await deleteEmployeeViaAPIWithFallback(request, token, userId);
+        await deleteEmployeeViaAPI(request, token, userId);
       });
     }
   });
@@ -73,10 +69,10 @@ test.describe('Employee API - CRUD Operations', () => {
     let userId: number;
 
     await test.step('Login as admin', async () => {
-      token = await loginAsAdmin(request);
+      token = await getAdminToken(request);
     });
 
-    let createdEmployee: any;
+    let createdEmployee: EmployeeResponse;
     let generatedPhone: string;
     await test.step('Create employee with test data', async () => {
       const createPayload = buildEmployeePayload('Bob', {
@@ -111,7 +107,7 @@ test.describe('Employee API - CRUD Operations', () => {
       });
     } finally {
       await test.step('Cleanup - Delete employee', async () => {
-        await deleteEmployeeViaAPIWithFallback(request, token, userId);
+        await deleteEmployeeViaAPI(request, token, userId);
       });
     }
   });
@@ -121,10 +117,10 @@ test.describe('Employee API - CRUD Operations', () => {
     let userId: number;
 
     await test.step('Login as admin', async () => {
-      token = await loginAsAdmin(request);
+      token = await getAdminToken(request);
     });
 
-    let createdEmployee: any;
+    let createdEmployee: EmployeeResponse;
     await test.step('Create employee with test data', async () => {
       const createPayload = buildEmployeePayload('Charlie', {
         information: {
@@ -137,7 +133,7 @@ test.describe('Employee API - CRUD Operations', () => {
     });
 
     try {
-      let updatedEmployee: any;
+      let updatedEmployee: EmployeeResponse;
       await test.step('Update employee first_name via PATCH', async () => {
         const updatePayload = buildUpdatePayload(createdEmployee.information, {
           first_name: 'Charles',
@@ -158,7 +154,7 @@ test.describe('Employee API - CRUD Operations', () => {
       });
     } finally {
       await test.step('Cleanup - Delete employee', async () => {
-        await deleteEmployeeViaAPIWithFallback(request, token, userId);
+        await deleteEmployeeViaAPI(request, token, userId);
       });
     }
   });
@@ -168,10 +164,9 @@ test.describe('Employee API - CRUD Operations', () => {
     let userId: number;
 
     await test.step('Login as admin', async () => {
-      token = await loginAsAdmin(request);
+      token = await getAdminToken(request);
     });
 
-    let createdEmployee: any;
     await test.step('Create employee with test data', async () => {
       const createPayload = buildEmployeePayload('Diana', {
         information: {
@@ -179,7 +174,7 @@ test.describe('Employee API - CRUD Operations', () => {
           last_name: 'Prince',
         },
       });
-      createdEmployee = await createEmployeeViaAPI(request, token, createPayload);
+      const createdEmployee = await createEmployeeViaAPI(request, token, createPayload);
       userId = createdEmployee.information.user_id;
     });
 
@@ -190,7 +185,7 @@ test.describe('Employee API - CRUD Operations', () => {
     });
 
     await test.step('Delete employee via API', async () => {
-      await deleteEmployeeViaAPIWithFallback(request, token, userId);
+      await deleteEmployeeViaAPI(request, token, userId);
     });
   });
 
@@ -199,11 +194,11 @@ test.describe('Employee API - CRUD Operations', () => {
     const userIds: number[] = [];
 
     await test.step('Login as admin', async () => {
-      token = await loginAsAdmin(request);
+      token = await getAdminToken(request);
     });
 
     const names = ['Eve', 'Frank', 'Grace'];
-    const createdEmployees: any[] = [];
+    const createdInfos: EmployeeInformation[] = [];
 
     try {
       await test.step('Create 3 employees in batch', async () => {
@@ -217,7 +212,7 @@ test.describe('Employee API - CRUD Operations', () => {
 
           const created = await createEmployeeViaAPI(request, token, createPayload);
           userIds.push(created.information.user_id);
-          createdEmployees.push(created.information);
+          createdInfos.push(created.information);
         }
 
         expect(userIds.length).toBe(3);
@@ -226,9 +221,9 @@ test.describe('Employee API - CRUD Operations', () => {
       await test.step('Update all employees first_name field', async () => {
         for (let i = 0; i < userIds.length; i++) {
           const userId = userIds[i];
-          const originalEmp = createdEmployees[i];
+          const originalInfo = createdInfos[i];
 
-          const updatePayload = buildUpdatePayload(originalEmp, {
+          const updatePayload = buildUpdatePayload(originalInfo, {
             first_name: names[i] + '_Updated',
           });
 
@@ -246,7 +241,7 @@ test.describe('Employee API - CRUD Operations', () => {
     } finally {
       await test.step('Cleanup - Delete all employees', async () => {
         for (const userId of userIds) {
-          await deleteEmployeeViaAPIWithFallback(request, token, userId);
+          await deleteEmployeeViaAPI(request, token, userId);
         }
       });
     }
