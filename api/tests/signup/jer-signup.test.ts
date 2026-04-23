@@ -117,7 +117,8 @@ test.describe('Phone Signup', () => {
     console.log('verifyPinTokenResponseBody', verifyPinTokenResponseBody)
 
     expect(verifyPinTokenResponseBody.idToken).not.toBeNull()
-    // get porfile
+
+    // get profile
     const getProfileResponse = await request.get(testEndpoint.getProfile, {
       headers: {
         Authorization: `Bearer ${verifyPinTokenResponseBody.id_token}`,
