@@ -21,8 +21,8 @@ const endpoints = {
 
 const employeeData = {
   employee_id: 'benzpassport01',
-  identity: 'A260422',
-  company_id: 1288,
+  passport_no: 'A260422',
+  company_id: '1288',
   phone: '0881001995',
   otp: '199119',
   firstName: 'Benz',
@@ -41,7 +41,7 @@ test.describe('Signup by Employee ID', () => {
       {
         data: {
           employee_id: employeeData.employee_id,
-          identity: employeeData.identity,
+          identity: employeeData.passport_no,
           company_id: employeeData.company_id,
         },
       }
@@ -141,10 +141,10 @@ test.describe('Signup by Employee ID', () => {
 
     const secureTokenBeforePinResponseBody =
       await secureTokenBeforePinResponse.json()
-    console.log(
-      'secureTokenBeforePinResponseBody Body: ',
-      secureTokenBeforePinResponseBody
-    )
+    // console.log(
+    //   'secureTokenBeforePinResponseBody Body: ',
+    //   secureTokenBeforePinResponseBody
+    // )
 
     expect(typeof secureTokenBeforePinResponseBody.access_token).toBe('string')
     expect(secureTokenBeforePinResponseBody.expires_in).toBe('3600')
@@ -168,7 +168,7 @@ test.describe('Signup by Employee ID', () => {
     })
 
     const verifyPinResponseBody = await verifyPinResponse.json()
-    console.log('verifyPinResponseBody Body: ', verifyPinResponseBody)
+    // console.log('verifyPinResponseBody Body: ', verifyPinResponseBody)
 
     expect(verifyPinResponseBody.message).toBe('Create PIN successfully')
 
@@ -185,10 +185,10 @@ test.describe('Signup by Employee ID', () => {
 
     const secureTokenAfterPinResponseBody =
       await secureTokenAfterPinResponse.json()
-    console.log(
-      'secureTokenAfterPinResponseBody Body: ',
-      secureTokenAfterPinResponseBody
-    )
+    // console.log(
+    //   'secureTokenAfterPinResponseBody Body: ',
+    //   secureTokenAfterPinResponseBody
+    // )
 
     expect(typeof secureTokenAfterPinResponseBody.access_token).toBe('string')
     expect(secureTokenAfterPinResponseBody.expires_in).toBe('3600')
@@ -209,10 +209,21 @@ test.describe('Signup by Employee ID', () => {
     })
 
     const userProfileResponseBody = await userProfileResponse.json()
-    console.log('userProfileResponseBody Body: ', userProfileResponseBody)
+    // console.log('userProfileResponseBody Body: ', userProfileResponseBody)
 
+    expect(userProfileResponseBody.profile.signup_at).not.toBeNull()
     expect(userProfileResponseBody.profile.first_name).toBe(
       employeeData.firstName
+    )
+    expect(userProfileResponseBody.profile.phone).toBe(employeeData.phone)
+    expect(userProfileResponseBody.profile.employee_id).toBe(
+      employeeData.employee_id
+    )
+    expect(userProfileResponseBody.profile.company_id).toBe(
+      employeeData.company_id
+    )
+    expect(userProfileResponseBody.profile.passport_no).toBe(
+      employeeData.passport_no
     )
     expect(userProfileResponseBody.profile.phone).toBe(employeeData.phone)
 
@@ -225,7 +236,7 @@ test.describe('Signup by Employee ID', () => {
     })
 
     const logoutResponseBody = await logoutResponse.json()
-    console.log('logoutResponseBody Body: ', logoutResponseBody)
+    // console.log('logoutResponseBody Body: ', logoutResponseBody)
 
     expect(logoutResponseBody.message).toBe('Logout successfully')
   })
