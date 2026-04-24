@@ -1,7 +1,7 @@
 import { APIRequestContext } from '@playwright/test';
-import { apiPost, apiPatch, apiDelete } from './api-client';
+import { endpoints } from './endpoints';
 import { getCompany } from './utils/seed-config';
-import { generateAccountNo, generatePhone, generateEmployeeId } from '../api/helpers/identifiers';
+import { generateAccountNo, resolvePhone, generateEmployeeId } from '../api/helpers/identifiers';
 
 export interface EmployeeInformation {
   first_name: string;
@@ -51,6 +51,12 @@ export interface EmployeePayload {
   bank?: EmployeeBank;
 }
 
+export interface EmployeePatchPayload {
+  information?: Partial<EmployeeInformation>;
+  address?: EmployeeAddress;
+  bank?: EmployeeBank;
+}
+
 export interface EmployeeResponse {
   information: EmployeeInformation & {
     user_id: number;
@@ -77,39 +83,41 @@ export async function createEmployeeViaAPI(
   data: EmployeePayload,
   companyId: number = getCompany('phone').id
 ): Promise<EmployeeResponse> {
-  const response = await apiPost<EmployeeResponse>(
-    request,
-    `/v1/admin/account/employee/${companyId}`,
-    token,
-    data
-  );
+  const url = endpoints.admin.createEmployee(companyId)
+  const response = await request.post(url, {
+    data,
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
-  if (!response.ok || !response.body.information.user_id) {
-    throw new Error(`Failed to create employee: ${response.status} - ${JSON.stringify(response.body)}`);
+  if (!response.ok()) {
+    throw new Error(
+      `createEmployeeViaAPI failed\n  POST ${url}\n  Status: ${response.status()}\n  Body: ${await response.text()}`
+    );
   }
 
-  return response.body;
+  return response.json() as Promise<EmployeeResponse>;
 }
 
 export async function updateEmployeeViaAPI(
   request: APIRequestContext,
   token: string,
   userId: number,
-  data: Partial<EmployeePayload>,
+  data: EmployeePatchPayload,
   companyId: number = getCompany('phone').id
 ): Promise<EmployeeResponse> {
-  const response = await apiPatch<EmployeeResponse>(
-    request,
-    `/v1/admin/account/employee/${companyId}/${userId}`,
-    token,
-    data
-  );
+  const url = endpoints.admin.updateEmployee(companyId, userId)
+  const response = await request.patch(url, {
+    data,
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
-  if (!response.ok) {
-    throw new Error(`Failed to update employee: ${response.status} - ${JSON.stringify(response.body)}`);
+  if (!response.ok()) {
+    throw new Error(
+      `updateEmployeeViaAPI failed\n  PATCH ${url}\n  Status: ${response.status()}\n  Body: ${await response.text()}`
+    );
   }
 
-  return response.body;
+  return response.json() as Promise<EmployeeResponse>;
 }
 
 export async function deleteEmployeeViaAPI(
@@ -117,14 +125,15 @@ export async function deleteEmployeeViaAPI(
   token: string,
   userId: number
 ): Promise<void> {
-  const response = await apiDelete(
-    request,
-    `/v1/admin/account/employee/${userId}`,
-    token
-  );
+  const url = endpoints.admin.deleteEmployee(String(userId))
+  const response = await request.delete(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
-  if (!response.ok) {
-    throw new Error(`Failed to delete employee: ${response.status} - ${JSON.stringify(response.body)}`);
+  if (!response.ok()) {
+    throw new Error(
+      `deleteEmployeeViaAPI failed\n  DELETE ${url}\n  Status: ${response.status()}\n  Body: ${await response.text()}`
+    );
   }
 }
 
@@ -136,7 +145,7 @@ export async function deleteEmployeeViaAPI(
 export function buildUpdatePayload(
   originalEmployee: EmployeeInformation,
   updates: Partial<EmployeeInformation> = {}
-): EmployeePayload {
+): EmployeePatchPayload {
   const writableFields: (keyof EmployeeInformation)[] = [
     'first_name',
     'middle_name',
@@ -170,7 +179,7 @@ export function buildUpdatePayload(
   });
 
   return {
-    information: mergedInformation as EmployeeInformation,
+    information: mergedInformation,
     address: {
       street_address: originalEmployee.street_address || '',
       sub_district: originalEmployee.sub_district || '',
@@ -190,21 +199,27 @@ export function buildEmployeePayload(
   firstName: string,
   options?: Partial<EmployeePayload>
 ): EmployeePayload {
-  // API returns paycycle_id as string but expects number on write
-  const paycycleId = options?.information?.paycycle_id
-    ? Number(options.information.paycycle_id)
-    : 3661;
+  // Callers must supply paycycle_id — no fallback to avoid silently seeding
+  // employees into the wrong paycycle on a different environment.
+  const rawPaycycleId = options?.information?.paycycle_id
+  if (!rawPaycycleId) {
+    throw new Error('buildEmployeePayload: options.information.paycycle_id is required — use getCompany().qa_paycycle_id')
+  }
+  const paycycleId = Number(rawPaycycleId)
+  if (isNaN(paycycleId) || paycycleId <= 0) {
+    throw new Error(`buildEmployeePayload: invalid paycycle_id "${rawPaycycleId}"`)
+  }
   const salary = options?.information?.salary
     ? Number(options.information.salary)
     : 30000;
   const companyId = String(options?.information?.company_id || getCompany('phone').id);
 
-  const defaultPayload: EmployeePayload = {
+  return {
     information: {
       first_name: firstName,
       last_name: options?.information?.last_name || 'QA Test',
       email: options?.information?.email || '',
-      phone: options?.information?.phone || generatePhone(),
+      phone: options?.information?.phone || resolvePhone(),
       status: options?.information?.status || 'active',
       is_blacklist: options?.information?.is_blacklist ?? false,
       salary,
@@ -232,6 +247,4 @@ export function buildEmployeePayload(
       ...options?.bank,
     },
   };
-
-  return defaultPayload;
 }

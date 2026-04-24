@@ -4,7 +4,42 @@
  * All generators use timestamp + random suffix to ensure uniqueness across runs.
  * Phone numbers and employee IDs must be generated per-run to avoid collisions
  * in paycycle constraints and Firebase uid mapping.
+ *
+ * On staging, ALL phone numbers must come from the approved bypass pool — even
+ * phones that are only stored on the employee record and never receive an OTP.
+ * Use resolvePhone() everywhere instead of generatePhone() directly.
  */
+
+import { PhonePool, getPhonePool } from '../../shared/utils/seed-config'
+import { ENV } from '../../shared/utils/env'
+
+export function pickPhoneFromPool(pool: PhonePool): string {
+  if (pool.start.length !== pool.end.length) {
+    throw new Error(
+      `pickPhoneFromPool: pool.start "${pool.start}" and pool.end "${pool.end}" must have the same length`
+    )
+  }
+  const start = parseInt(pool.start, 10)
+  const end = parseInt(pool.end, 10)
+  if (isNaN(start) || isNaN(end) || start > end) {
+    throw new Error(
+      `pickPhoneFromPool: invalid pool range "${pool.start}"–"${pool.end}"`
+    )
+  }
+  const picked = Math.floor(Math.random() * (end - start + 1)) + start
+  return String(picked).padStart(pool.start.length, '0')
+}
+
+/**
+ * Returns a phone number appropriate for the current environment.
+ * On staging: picks from the approved bypass pool (0881001500–0881001600).
+ * On dev: generates a random unique number.
+ *
+ * Always use this instead of generatePhone() in test and seed code.
+ */
+export function resolvePhone(): string {
+  return ENV === 'staging' ? pickPhoneFromPool(getPhonePool()) : generatePhone()
+}
 
 export function generatePhone(): string {
   const suffix = `${Date.now()}${Math.floor(Math.random() * 100)}`.slice(-8)

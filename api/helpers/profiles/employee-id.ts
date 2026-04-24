@@ -1,11 +1,10 @@
 import {
   buildMonthlyEmployeePayload,
   createEmployee,
-  deleteEmployee,
   findEmployeeByIdentifier,
 } from '../employee'
 import {
-  generatePhone,
+  resolvePhone,
   generateEmployeeId,
   generateNationalId,
   generatePassportNo,
@@ -13,18 +12,18 @@ import {
 } from '../identifiers'
 import { CleanupStep, Employee, SeedProfile } from '../seed'
 import { getCompany } from '../../../shared/utils/seed-config'
+import { hardDeleteEmployee } from '../../../shared/db-helpers'
 
 const cleanupEmployee: CleanupStep = async (request, ctx) => {
-  let userId = ctx.employee.user_id
+  const userId = ctx.employee.user_id
 
-  // Post-test phase: we have the user_id from the test we just ran
-  // Delete via API - backend cascades to all tables (employment, user_identity, user_balance, users)
+  // Post-test phase: hard delete to remove phone/bank constraints for next run
   if (userId) {
-    await deleteEmployee(request, userId)
+    await hardDeleteEmployee(userId)
     return
   }
 
-  // Pre-seed phase: user_id is empty — try to find and delete any lingering users
+  // Pre-seed phase: find and hard delete any employee left from a failed run
   if (ctx.identifiers.employee_id) {
     try {
       const found = await findEmployeeByIdentifier(
@@ -34,11 +33,10 @@ const cleanupEmployee: CleanupStep = async (request, ctx) => {
         'employee_id'
       )
       if (found?.user_id) {
-        await deleteEmployee(request, found.user_id)
+        await hardDeleteEmployee(found.user_id)
       }
     } catch {
-      // If search or delete fails, that's OK - fresh employee_id ensures no collision
-      // Just continue seeding with the new employee_id
+      // pre-seed cleanup is best-effort — fresh identifiers prevent collisions
     }
   }
 }
@@ -54,7 +52,7 @@ export const employeeIdSignupProfile: SeedProfile = {
   resolveIdentifiers: () => ({
     employee_id: generateEmployeeId(),
     national_id: generateNationalId(),
-    phone: generatePhone(),
+    phone: resolvePhone(),
     email: generateEmail(),
   }),
 
@@ -89,7 +87,7 @@ export const employeeIdPassportSignupProfile: SeedProfile = {
   resolveIdentifiers: () => ({
     employee_id: generateEmployeeId(),
     passport_no: generatePassportNo(),
-    phone: generatePhone(),
+    phone: resolvePhone(),
     email: generateEmail(),
   }),
 

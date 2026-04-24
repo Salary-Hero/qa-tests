@@ -1,25 +1,23 @@
 import {
   buildMonthlyEmployeePayload,
   createEmployee,
-  deleteEmployee,
   findEmployeeByIdentifier,
 } from '../employee'
-import { generatePhone, generateEmail, generateEmployeeId } from '../identifiers'
+import { resolvePhone, generateEmail, generateEmployeeId } from '../identifiers'
 import { CleanupStep, Employee, SeedProfile } from '../seed'
 import { getCompany } from '../../../shared/utils/seed-config'
+import { hardDeleteEmployee } from '../../../shared/db-helpers'
 
 const cleanupEmployee: CleanupStep = async (request, ctx) => {
-  let userId = ctx.employee.user_id
+  const userId = ctx.employee.user_id
 
-  // Post-test phase: we have the user_id from the test we just ran
-  // Delete via API - backend cascades to all tables (employment, user_identity, user_balance, users)
+  // Post-test phase: hard delete to remove phone/bank constraints for next run
   if (userId) {
-    await deleteEmployee(request, userId)
+    await hardDeleteEmployee(userId)
     return
   }
 
-  // Pre-seed phase: user_id is empty — try to find and delete any lingering users
-  // This helps maintain idempotency if a previous test run failed to cleanup
+  // Pre-seed phase: find and hard delete any employee left over from a failed run
   if (ctx.identifiers.phone) {
     try {
       const found = await findEmployeeByIdentifier(
@@ -29,11 +27,10 @@ const cleanupEmployee: CleanupStep = async (request, ctx) => {
         'phone'
       )
       if (found?.user_id) {
-        await deleteEmployee(request, found.user_id)
+        await hardDeleteEmployee(found.user_id)
       }
     } catch {
-      // If search or delete fails, that's OK - fresh phone number ensures no collision
-      // Just continue seeding with the new phone
+      // If search or delete fails, the pool strategy ensures no collision on next run
     }
   }
 }
@@ -47,7 +44,7 @@ export const phoneSignupProfile: SeedProfile = {
   resolveCompany: () => getCompany('phone'),
 
   resolveIdentifiers: () => ({
-    phone: generatePhone(),
+    phone: resolvePhone(),
     email: generateEmail(),
     employee_id: generateEmployeeId(),
   }),

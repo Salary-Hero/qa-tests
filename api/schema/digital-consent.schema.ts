@@ -27,7 +27,8 @@ export const ImportMappingSchema = z.object({
 
 const PreviewRowSchema = z.object({
   employee_id: z.string(),
-  national_id: z.union([z.string(), z.number()]),
+  // API inconsistently returns national_id as string or number — normalise to string
+  national_id: z.union([z.string(), z.number()]).transform(String),
   passport_no: z.string(),
   company_id: z.number(),
 })
@@ -53,7 +54,8 @@ export const ImportSuccessSchema = z.object({
 
 // --- Consent signup schemas (steps 8–10) ---
 
-// TODO: define full schema once the response contract is confirmed
+// TODO: define full schema once the response contract is confirmed.
+// passthrough() is a temporary placeholder — replace with explicit field definitions.
 export const ScreeningValidateSchema = z.object({}).passthrough()
 
 export const ConsentRequestFormSchema = z.object({

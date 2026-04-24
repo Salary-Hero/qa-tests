@@ -1,6 +1,7 @@
 /**
  * Employee API — CRUD test suite.
- * Uses getAdminToken() for auth and deleteEmployeeViaAPI() for cleanup.
+ * Cleanup uses hardDeleteEmployee() to fully remove phone and bank_account_no
+ * from the paycycle uniqueness constraint between runs.
  * All employees are created and deleted within each test — no shared state.
  */
 
@@ -15,10 +16,13 @@ import {
   EmployeeResponse,
   EmployeeInformation,
 } from '../../../shared/employee-api';
-import { getUserById } from '../../../shared/db-helpers';
+import { getUserById, hardDeleteEmployee } from '../../../shared/db-helpers';
+import { getCompany } from '../../../shared/utils/seed-config';
 
 test.describe('Employee API - CRUD Operations', () => {
   test.describe.configure({ mode: 'serial' });
+
+  const company = getCompany('phone');
 
   test('CREATE - Create new employee via API', async ({ request }) => {
     let token: string;
@@ -35,6 +39,8 @@ test.describe('Employee API - CRUD Operations', () => {
         information: {
           first_name: 'Alice',
           last_name: 'Smith',
+          company_id: String(company.id),
+          paycycle_id: company.qa_paycycle_id,
         },
       });
       generatedPhone = createPayload.information.phone!;
@@ -58,8 +64,8 @@ test.describe('Employee API - CRUD Operations', () => {
         expect(dbUser.status).toBe('active');
       });
     } finally {
-      await test.step('Cleanup - Delete employee', async () => {
-        await deleteEmployeeViaAPI(request, token, userId);
+      await test.step('Cleanup - Hard delete employee', async () => {
+        await hardDeleteEmployee(String(userId));
       });
     }
   });
@@ -79,6 +85,8 @@ test.describe('Employee API - CRUD Operations', () => {
         information: {
           first_name: 'Bob',
           last_name: 'Johnson',
+          company_id: String(company.id),
+          paycycle_id: company.qa_paycycle_id,
         },
       });
       generatedPhone = createPayload.information.phone!;
@@ -106,8 +114,8 @@ test.describe('Employee API - CRUD Operations', () => {
         expect(dbUser.last_name).toBe('Johnson');
       });
     } finally {
-      await test.step('Cleanup - Delete employee', async () => {
-        await deleteEmployeeViaAPI(request, token, userId);
+      await test.step('Cleanup - Hard delete employee', async () => {
+        await hardDeleteEmployee(String(userId));
       });
     }
   });
@@ -126,6 +134,8 @@ test.describe('Employee API - CRUD Operations', () => {
         information: {
           first_name: 'Charlie',
           last_name: 'Brown',
+          company_id: String(company.id),
+          paycycle_id: company.qa_paycycle_id,
         },
       });
       createdEmployee = await createEmployeeViaAPI(request, token, createPayload);
@@ -153,8 +163,8 @@ test.describe('Employee API - CRUD Operations', () => {
         expect(dbUser.last_name).toBe('Brown');
       });
     } finally {
-      await test.step('Cleanup - Delete employee', async () => {
-        await deleteEmployeeViaAPI(request, token, userId);
+      await test.step('Cleanup - Hard delete employee', async () => {
+        await hardDeleteEmployee(String(userId));
       });
     }
   });
@@ -172,6 +182,8 @@ test.describe('Employee API - CRUD Operations', () => {
         information: {
           first_name: 'Diana',
           last_name: 'Prince',
+          company_id: String(company.id),
+          paycycle_id: company.qa_paycycle_id,
         },
       });
       const createdEmployee = await createEmployeeViaAPI(request, token, createPayload);
@@ -184,8 +196,14 @@ test.describe('Employee API - CRUD Operations', () => {
       expect(dbUser.first_name).toBe('Diana');
     });
 
+    // Tests the soft-delete API endpoint — intentionally uses deleteEmployeeViaAPI
     await test.step('Delete employee via API', async () => {
       await deleteEmployeeViaAPI(request, token, userId);
+    });
+
+    // Hard delete after the API soft-delete test to clear paycycle constraints
+    await test.step('Cleanup - Hard delete employee', async () => {
+      await hardDeleteEmployee(String(userId));
     });
   });
 
@@ -207,6 +225,8 @@ test.describe('Employee API - CRUD Operations', () => {
             information: {
               first_name: name,
               last_name: 'TestBatch',
+              company_id: String(company.id),
+              paycycle_id: company.qa_paycycle_id,
             },
           });
 
@@ -239,9 +259,9 @@ test.describe('Employee API - CRUD Operations', () => {
         }
       });
     } finally {
-      await test.step('Cleanup - Delete all employees', async () => {
+      await test.step('Cleanup - Hard delete all employees', async () => {
         for (const userId of userIds) {
-          await deleteEmployeeViaAPI(request, token, userId);
+          await hardDeleteEmployee(String(userId));
         }
       });
     }

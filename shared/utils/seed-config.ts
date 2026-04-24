@@ -14,10 +14,23 @@ export type FixedIdentifiers = {
   email: string
 }
 
+export type PhonePool = {
+  start: string
+  end: string
+}
+
+export type OtpBypass = {
+  code: string
+  ref_code: string
+}
+
 export type SeedConfigForEnv = {
   companies: Record<AuthMethod, Company>
   fixedIdentifiers: FixedIdentifiers
   otp: string
+  pincode: string
+  phonePool?: PhonePool
+  otpBypass?: OtpBypass
 }
 
 type SeedConfigFile = Record<string, SeedConfigForEnv>
@@ -29,6 +42,11 @@ if (!config[ENV]) {
 }
 
 export const seedConfigForEnv: SeedConfigForEnv = config[ENV]
+
+// OTP and PINCODE come from seed-config.json per environment — never hardcoded defaults.
+// OTP: dev=111111, staging=199119. Using a wrong OTP on staging sends a real SMS.
+export const OTP: string = seedConfigForEnv.otp
+export const PINCODE: string = seedConfigForEnv.pincode
 
 export function getCompany(method: AuthMethod): Company {
   const company = seedConfigForEnv.companies[method]
@@ -48,4 +66,24 @@ export function getFixedIdentifier(key: keyof FixedIdentifiers): string {
     )
   }
   return value
+}
+
+export function getPhonePool(): PhonePool {
+  const pool = seedConfigForEnv.phonePool
+  if (!pool) {
+    throw new Error(
+      `seed-config.json: phonePool is not configured for ENV="${ENV}"`
+    )
+  }
+  return pool
+}
+
+export function getOtpBypass(): OtpBypass {
+  const bypass = seedConfigForEnv.otpBypass
+  if (!bypass) {
+    throw new Error(
+      `seed-config.json: otpBypass is not configured for ENV="${ENV}"`
+    )
+  }
+  return bypass
 }

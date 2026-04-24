@@ -56,8 +56,7 @@ export async function importDigitalConsentData(
   if (!createFetchResponse.ok) {
     throw new Error(`Step 1 Create Job failed: ${createFetchResponse.status} ${await createFetchResponse.text()}`)
   }
-  const createBody = await createFetchResponse.json() as { job_id: string }
-  validateSchema(createBody, ImportJobSchema, 'Create Job')
+  const createBody = ImportJobSchema.parse(await createFetchResponse.json())
   const jobId: string = createBody.job_id
 
   // Step 2: Configure import

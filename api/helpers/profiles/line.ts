@@ -1,34 +1,41 @@
 import {
   buildMonthlyEmployeePayload,
   createEmployee,
-  deleteEmployee,
   findEmployeeByIdentifier,
 } from '../employee'
-import { generatePhone, generateEmail, generateEmployeeId } from '../identifiers'
+import { resolvePhone, generateEmail, generateEmployeeId } from '../identifiers'
 import { CleanupStep, Employee, SeedProfile } from '../seed'
 import { getCompany, getFixedIdentifier } from '../../../shared/utils/seed-config'
 import { getAdminToken } from '../admin-auth'
-import { updateEmployeeViaAPI, EmployeePayload } from '../../../shared/employee-api'
+import { updateEmployeeViaAPI, EmployeePatchPayload } from '../../../shared/employee-api'
+import { hardDeleteEmployee } from '../../../shared/db-helpers'
+
+const clearLineId = async (request: Parameters<CleanupStep>[0], userId: string) => {
+  const numericUserId = Number(userId)
+  if (!numericUserId || isNaN(numericUserId)) {
+    throw new Error(`clearLineId: invalid user_id "${userId}"`)
+  }
+  const token = await getAdminToken(request)
+  // LINE imposes a unique constraint on line_id — must be cleared before hard delete
+  const payload: EmployeePatchPayload = { information: { first_name: '', line_id: null } }
+  await updateEmployeeViaAPI(request, token, numericUserId, payload)
+}
 
 const cleanupEmployee: CleanupStep = async (request, ctx) => {
-  let userId = ctx.employee.user_id
+  const userId = ctx.employee.user_id
 
-  // Post-test phase: we have the user_id from the test we just ran
-  // Must clear line_id first (unique constraint) before deletion
+  // Post-test phase: clear line_id unique constraint then hard delete
   if (userId) {
     try {
-      const token = await getAdminToken(request)
-      const clearLineId: Partial<EmployeePayload> = { information: { first_name: '', line_id: null } }
-      await updateEmployeeViaAPI(request, token, Number(userId), clearLineId)
+      await clearLineId(request, userId)
     } catch {
-      // If update fails, continue anyway - best-effort cleanup
+      // If clearing line_id fails, hard delete proceeds — FK cascade removes it
     }
-    await deleteEmployee(request, userId)
+    await hardDeleteEmployee(userId)
     return
   }
 
-  // Pre-seed phase: user_id is empty — try to find and delete any lingering users
-  // Uses fixed email since line_id and phone cannot be fixed
+  // Pre-seed phase: find any employee left from a failed run and hard delete it
   if (ctx.identifiers.email) {
     try {
       const found = await findEmployeeByIdentifier(
@@ -39,17 +46,14 @@ const cleanupEmployee: CleanupStep = async (request, ctx) => {
       )
       if (found?.user_id) {
         try {
-          const token = await getAdminToken(request)
-          const clearLineId: Partial<EmployeePayload> = { information: { first_name: '', line_id: null } }
-          await updateEmployeeViaAPI(request, token, Number(found.user_id), clearLineId)
+          await clearLineId(request, found.user_id)
         } catch {
-          // If update fails, continue anyway - best-effort cleanup
+          // proceed to hard delete regardless
         }
-        await deleteEmployee(request, found.user_id)
+        await hardDeleteEmployee(found.user_id)
       }
     } catch {
-      // If search or delete fails, that's OK - we'll create a fresh employee for this test
-      // The API will handle cleanup properly at the end of this test
+      // pre-seed cleanup is best-effort — fresh identifiers prevent collisions
     }
   }
 }
@@ -67,7 +71,7 @@ export const lineSignupProfile: SeedProfile = {
   resolveIdentifiers: () => ({
     line_id: getFixedIdentifier('line_id'),
     email: generateEmail(),
-    phone: generatePhone(),
+    phone: resolvePhone(),
     employee_id: generateEmployeeId(),
   }),
 

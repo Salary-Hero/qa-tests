@@ -1,32 +1,32 @@
 import { defineConfig, devices } from '@playwright/test'
 import dotenv from 'dotenv'
 
-dotenv.config()
+dotenv.config({ path: process.env.DOTENV_FILE ?? '.env' })
 
 const ENV = process.env.ENV ?? 'dev'
+const KNOWN_ENVS = ['dev', 'staging']
+if (!KNOWN_ENVS.includes(ENV)) {
+  throw new Error(`Unknown ENV: "${ENV}". Must be one of: ${KNOWN_ENVS.join(', ')}`)
+}
 
 const baseURLs: Record<string, string> = {
   dev: 'https://apiv2-dev.salary-hero.com',
   staging: 'https://apiv2-staging.salary-hero.com',
-  prod: 'https://apiv2.salary-hero.com',
 }
 
 const adminURLs: Record<string, string> = {
   dev: 'https://backoffice-salary-hero-dev.web.app',
   staging: 'https://backoffice-salary-hero-test.web.app',
-  prod: 'https://backoffice-salary-hero.web.app',
 }
 
 const hrURLs: Record<string, string> = {
   dev: 'https://console-salary-hero-dev.web.app',
   staging: 'https://console-salary-hero-test.web.app',
-  prod: 'https://console-salary-hero.web.app',
 }
 
 const otpCodes: Record<string, string> = {
   dev: '111111',
   staging: '199119',
-  prod: '',
 }
 
 export default defineConfig({

@@ -7,6 +7,7 @@ import {
 } from '../../shared/utils/env'
 import { endpoints } from '../../shared/endpoints'
 import { ENV_ERRORS } from '../../shared/utils/error-messages'
+import { LineTokenRefreshSchema } from '../schema/signup.schema'
 
 /**
  * Refreshes the LINE user access token using the stored refresh token.
@@ -42,6 +43,6 @@ export async function getLineAccessToken(
     )
   }
 
-  const body = await response.json()
-  return body.access_token as string
+  const body = LineTokenRefreshSchema.parse(await response.json())
+  return body.access_token
 }

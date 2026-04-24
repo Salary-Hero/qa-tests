@@ -22,7 +22,7 @@ yarn install
 cp .env.example .env
 ```
 
-Edit `.env` and set `ENV` to your target environment (`dev`, `staging`, or `prod`).
+Edit `.env` and set `ENV` to your target environment (`dev` or `staging`).
 
 ## Running tests
 
@@ -51,7 +51,7 @@ yarn report
 ### General
 | Variable      | Default  | Description                                  |
 | ------------- | -------- | -------------------------------------------- |
-| `ENV`         | `dev`    | Target environment: `dev`, `staging`, `prod` |
+| `ENV`         | `dev`    | Target environment: `dev` or `staging`       |
 | `APP_VERSION` | `10.0.0` | Value sent in `x-app-version` header         |
 
 OTP codes are resolved automatically from `playwright.config.ts` based on `ENV`:

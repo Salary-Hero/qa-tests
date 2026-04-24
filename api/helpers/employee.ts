@@ -2,9 +2,15 @@ import { APIRequestContext } from '@playwright/test'
 import { z } from 'zod'
 import { endpoints } from '../../shared/endpoints'
 import { Company } from '../../shared/utils/seed-config'
-import { generatePhone, generateAccountNo } from './identifiers'
+import { resolvePhone, generateAccountNo } from './identifiers'
 import { Identifiers } from './seed'
 import { getAdminToken } from './admin-auth'
+
+const CreateEmployeeResponseSchema = z.object({
+  information: z.object({
+    user_id: z.union([z.string(), z.number()]).transform(String),
+  }),
+})
 
 const EmployeeRecordSchema = z.object({
   user_id: z.union([z.string(), z.number()]),
@@ -60,8 +66,6 @@ export type CreateEmployeePayload = {
   }
 }
 
-
-
 export function buildMonthlyEmployeePayload(opts: {
   company: Company
   identifiers: Identifiers
@@ -77,7 +81,7 @@ export function buildMonthlyEmployeePayload(opts: {
       middle_name: '',
       last_name: nameSuffix,
       email: identifiers.email ?? '',
-      phone: identifiers.phone ?? generatePhone(),
+      phone: identifiers.phone ?? resolvePhone(),
       company_id: String(company.id),
       employee_id: identifiers.employee_id ?? '',
       salary: 50000,
@@ -129,7 +133,7 @@ export async function createEmployee(
     )
   }
 
-  const body = await response.json()
+  const body = CreateEmployeeResponseSchema.parse(await response.json())
   return { user_id: body.information.user_id }
 }
 

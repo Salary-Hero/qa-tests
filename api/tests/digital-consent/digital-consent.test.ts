@@ -1,30 +1,34 @@
 import { test, expect } from '@playwright/test'
-import { APIRequestContext } from '@playwright/test'
 import { getAdminToken } from '../../helpers/admin-auth'
 import { importDigitalConsentData } from '../../helpers/digital-consent-import'
-import { deleteEmployee } from '../../helpers/employee'
-import { generatePhone, generateEmail } from '../../helpers/identifiers'
+import { resolvePhone, generateEmail } from '../../helpers/identifiers'
 import {
   firebaseSignIn,
   firebaseRefreshToken as firebaseRefreshTokenAPI,
 } from '../../helpers/firebase'
-import { validateSchema } from '../../../shared/utils/schema'
+import { parseResponse } from '../../../shared/utils/response'
 import {
   findSignedUpUserIds,
   deleteEmployeeProfileRecords,
   getEmployeeProfiles,
   getEmployeeConsentStatus,
+  hardDeleteEmployee,
 } from '../../../shared/db-helpers'
 import { endpoints } from '../../../shared/endpoints'
-import { getCompany } from '../../../shared/utils/seed-config'
-import { seedConfigForEnv } from '../../../shared/utils/seed-config'
-import { PINCODE } from '../../../shared/utils/env'
+import { getCompany, seedConfigForEnv } from '../../../shared/utils/seed-config'
+import { PINCODE } from '../../../shared/utils/seed-config'
 import { DEFAULT_REQUEST_HEADERS, AUTH_HEADERS } from '../../helpers/request'
 import {
   ScreeningValidateSchema,
   ConsentRequestFormSchema,
   ConsentVerifyFormSchema,
 } from '../../schema/digital-consent.schema'
+import {
+  FirebaseSignInSchema,
+  FirebaseRefreshSchema,
+  CreatePinSchema,
+  GetProfileSchema,
+} from '../../schema/signup.schema'
 
 const COMPANY_ID = getCompany('digital_consent').id
 const TEST_EMPLOYEES = [
@@ -44,12 +48,11 @@ const TEST_PASSPORT_NOS = TEST_EMPLOYEES.map((e) => e.passport_no)
  * that employee. Deleting via admin API cascades to user_identity, employment,
  * user_balance, and users.
  */
-async function cleanupSignedUpUsers(request: APIRequestContext) {
+async function cleanupSignedUpUsers() {
   const userIds = await findSignedUpUserIds(TEST_NATIONAL_IDS, TEST_PASSPORT_NOS)
-
   for (const userId of userIds) {
     try {
-      await deleteEmployee(request, userId)
+      await hardDeleteEmployee(userId)
     } catch {
       // best-effort — user may already be gone
     }
@@ -64,7 +67,7 @@ test.describe('Digital Consent', () => {
 
   test.beforeAll(async ({ request }) => {
     await test.step('Cleanup signed-up users from previous runs', async () => {
-      await cleanupSignedUpUsers(request)
+      await cleanupSignedUpUsers()
     })
 
     await test.step('Cleanup employee_profile records from previous runs', async () => {
@@ -82,9 +85,9 @@ test.describe('Digital Consent', () => {
     })
   })
 
-  test.afterAll(async ({ request }) => {
+  test.afterAll(async () => {
     await test.step('Cleanup signed-up users', async () => {
-      await cleanupSignedUpUsers(request)
+      await cleanupSignedUpUsers()
     })
 
     await test.step('Cleanup employee_profile records', async () => {
@@ -92,10 +95,10 @@ test.describe('Digital Consent', () => {
     })
   })
 
-  test.afterEach(async ({ request }) => {
+  test.afterEach(async () => {
     await test.step('Cleanup signed-up user from this test', async () => {
       if (signedUpUserId) {
-        await deleteEmployee(request, signedUpUserId)
+        await hardDeleteEmployee(signedUpUserId)
         signedUpUserId = null
       }
     })
@@ -104,7 +107,6 @@ test.describe('Digital Consent', () => {
   test('TC-CONSENT-001 · Import — verify all 4 records created with consent_status = new', async () => {
     await test.step('Verify 4 employee_profile rows exist with consent_status = new', async () => {
       const rows = await getEmployeeProfiles(TEST_EMPLOYEE_IDS, COMPANY_ID)
-
       expect(rows.length).toBe(4)
       for (const row of rows) {
         expect(row.consent_status).toBe('new')
@@ -116,7 +118,7 @@ test.describe('Digital Consent', () => {
     request,
   }) => {
     const employee = TEST_EMPLOYEES[0] // TS01900
-    const phone = generatePhone()
+    const phone = resolvePhone()
     const email = generateEmail()
     let refCode: string
     let firebaseCustomToken: string
@@ -125,111 +127,94 @@ test.describe('Digital Consent', () => {
     let idTokenPostPin: string
 
     await test.step('Validate screening identity (national_id)', async () => {
+      const payload = {
+        employee_id: employee.employee_id,
+        personal_id: employee.national_id,
+        personal_id_type: 'national_id',
+        company_id: COMPANY_ID,
+      }
       const response = await request.post(endpoints.consent.screeningValidate, {
         headers: DEFAULT_REQUEST_HEADERS,
-        data: {
-          employee_id: employee.employee_id,
-          personal_id: employee.national_id,
-          personal_id_type: 'national_id',
-          company_id: COMPANY_ID,
-        },
+        data: payload,
       })
-
-      expect(response.status()).toBe(200)
-      const body = await response.json()
-      validateSchema(body, ScreeningValidateSchema, 'Screening Validate')
+      await parseResponse(response, ScreeningValidateSchema, 'Screening Validate', 200, payload)
     })
 
     await test.step('Submit consent request form', async () => {
+      const payload = {
+        personal_id_type: 'national_id',
+        company_id: COMPANY_ID,
+        screening: {
+          employee_id: employee.employee_id,
+          personal_id: employee.national_id,
+        },
+        request_form: { first_name: 'QA', last_name: 'Consent', email, phone },
+      }
       const response = await request.post(endpoints.consent.requestForm, {
         headers: DEFAULT_REQUEST_HEADERS,
-        data: {
-          personal_id_type: 'national_id',
-          company_id: COMPANY_ID,
-          screening: {
-            employee_id: employee.employee_id,
-            personal_id: employee.national_id,
-          },
-          request_form: {
-            first_name: 'QA',
-            last_name: 'Consent',
-            email,
-            phone,
-          },
-        },
+        data: payload,
       })
-
-      expect(response.status()).toBe(200)
-      const body = await response.json()
-      validateSchema(body, ConsentRequestFormSchema, 'Request Form')
-      refCode = body.verification.ref_code
+      const parsed = await parseResponse(response, ConsentRequestFormSchema, 'Request Form', 200, payload)
+      refCode = parsed.verification.ref_code
     })
 
     await test.step('Verify OTP', async () => {
+      const payload = { ref_code: refCode, code: seedConfigForEnv.otp, phone }
       const response = await request.post(endpoints.consent.verifyForm, {
         headers: DEFAULT_REQUEST_HEADERS,
-        data: {
-          ref_code: refCode,
-          code: seedConfigForEnv.otp,
-          phone,
-        },
+        data: payload,
       })
-
-      expect(response.status()).toBe(200)
-      const body = await response.json()
-      validateSchema(body, ConsentVerifyFormSchema, 'Verify Form')
-      firebaseCustomToken = body.verification_info.token
+      const parsed = await parseResponse(response, ConsentVerifyFormSchema, 'Verify Form', 200, payload)
+      firebaseCustomToken = parsed.verification_info.token
     })
 
     await test.step('Firebase sign in with custom token', async () => {
-      const result = await firebaseSignIn(request, firebaseCustomToken)
-      firebaseRefreshToken = result.refreshToken
+      const parsed = FirebaseSignInSchema.parse(await firebaseSignIn(request, firebaseCustomToken))
+      firebaseRefreshToken = parsed.refreshToken
     })
 
     await test.step('Get Firebase ID token (pre-PIN)', async () => {
-      const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
-      idTokenPrePin = result.id_token
+      const parsed = FirebaseRefreshSchema.parse(
+        await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
+      )
+      idTokenPrePin = parsed.id_token
     })
 
     await test.step('Create PIN', async () => {
+      const payload = { pincode: PINCODE }
       const response = await request.post(endpoints.signup.createPin, {
         headers: AUTH_HEADERS(idTokenPrePin),
-        data: { pincode: PINCODE },
+        data: payload,
       })
-
-      expect(response.status()).toBe(200)
-      const body = await response.json()
-      expect(body.message).toBe('Create PIN successfully')
+      const parsed = await parseResponse(response, CreatePinSchema, 'Create PIN', 200, payload)
+      expect(parsed.message).toBe('Create PIN successfully')
     })
 
     await test.step('Get Firebase ID token (post-PIN)', async () => {
-      const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
-      idTokenPostPin = result.id_token
+      const parsed = FirebaseRefreshSchema.parse(
+        await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
+      )
+      idTokenPostPin = parsed.id_token
     })
 
     await test.step('Get profile — verify consent accepted', async () => {
       const response = await request.get(endpoints.signup.getProfile, {
         headers: AUTH_HEADERS(idTokenPostPin),
       })
-
-      expect(response.status()).toBe(200)
-      const body = await response.json()
-      expect(body.profile.is_consent_accepted).toBe(true)
-      expect(body.profile.has_pincode).toBe(true)
-      signedUpUserId = String(body.profile.user_id)
+      const parsed = await parseResponse(response, GetProfileSchema, 'Get Profile')
+      expect(parsed.profile.is_consent_accepted).toBe(true)
+      expect(parsed.profile.has_pincode).toBe(true)
+      signedUpUserId = parsed.profile.user_id
     })
 
     await test.step('DB — verify consent_status = pending_review', async () => {
       const status = await getEmployeeConsentStatus(employee.employee_id, COMPANY_ID)
-
       expect(status).toBe('pending_review')
     })
 
     await test.step('Logout (best-effort)', async () => {
       try {
-        await request.post(endpoints.signup.logout, {
-          headers: AUTH_HEADERS(idTokenPostPin),
-        })
+        await request.post(endpoints.signup.logout, { headers: AUTH_HEADERS(idTokenPostPin) })
       } catch {
         // logout failure does not fail the test
       }
@@ -240,7 +225,7 @@ test.describe('Digital Consent', () => {
     request,
   }) => {
     const employee = TEST_EMPLOYEES[1] // TS01901
-    const phone = generatePhone()
+    const phone = resolvePhone()
     const email = generateEmail()
     let refCode: string
     let firebaseCustomToken: string
@@ -249,111 +234,94 @@ test.describe('Digital Consent', () => {
     let idTokenPostPin: string
 
     await test.step('Validate screening identity (passport_no)', async () => {
+      const payload = {
+        employee_id: employee.employee_id,
+        personal_id: employee.passport_no,
+        personal_id_type: 'passport_no',
+        company_id: COMPANY_ID,
+      }
       const response = await request.post(endpoints.consent.screeningValidate, {
         headers: DEFAULT_REQUEST_HEADERS,
-        data: {
-          employee_id: employee.employee_id,
-          personal_id: employee.passport_no,
-          personal_id_type: 'passport_no',
-          company_id: COMPANY_ID,
-        },
+        data: payload,
       })
-
-      expect(response.status()).toBe(200)
-      const body = await response.json()
-      validateSchema(body, ScreeningValidateSchema, 'Screening Validate')
+      await parseResponse(response, ScreeningValidateSchema, 'Screening Validate', 200, payload)
     })
 
     await test.step('Submit consent request form', async () => {
+      const payload = {
+        personal_id_type: 'passport_no',
+        company_id: COMPANY_ID,
+        screening: {
+          employee_id: employee.employee_id,
+          personal_id: employee.passport_no,
+        },
+        request_form: { first_name: 'QA', last_name: 'Consent', email, phone },
+      }
       const response = await request.post(endpoints.consent.requestForm, {
         headers: DEFAULT_REQUEST_HEADERS,
-        data: {
-          personal_id_type: 'passport_no',
-          company_id: COMPANY_ID,
-          screening: {
-            employee_id: employee.employee_id,
-            personal_id: employee.passport_no,
-          },
-          request_form: {
-            first_name: 'QA',
-            last_name: 'Consent',
-            email,
-            phone,
-          },
-        },
+        data: payload,
       })
-
-      expect(response.status()).toBe(200)
-      const body = await response.json()
-      validateSchema(body, ConsentRequestFormSchema, 'Request Form')
-      refCode = body.verification.ref_code
+      const parsed = await parseResponse(response, ConsentRequestFormSchema, 'Request Form', 200, payload)
+      refCode = parsed.verification.ref_code
     })
 
     await test.step('Verify OTP', async () => {
+      const payload = { ref_code: refCode, code: seedConfigForEnv.otp, phone }
       const response = await request.post(endpoints.consent.verifyForm, {
         headers: DEFAULT_REQUEST_HEADERS,
-        data: {
-          ref_code: refCode,
-          code: seedConfigForEnv.otp,
-          phone,
-        },
+        data: payload,
       })
-
-      expect(response.status()).toBe(200)
-      const body = await response.json()
-      validateSchema(body, ConsentVerifyFormSchema, 'Verify Form')
-      firebaseCustomToken = body.verification_info.token
+      const parsed = await parseResponse(response, ConsentVerifyFormSchema, 'Verify Form', 200, payload)
+      firebaseCustomToken = parsed.verification_info.token
     })
 
     await test.step('Firebase sign in with custom token', async () => {
-      const result = await firebaseSignIn(request, firebaseCustomToken)
-      firebaseRefreshToken = result.refreshToken
+      const parsed = FirebaseSignInSchema.parse(await firebaseSignIn(request, firebaseCustomToken))
+      firebaseRefreshToken = parsed.refreshToken
     })
 
     await test.step('Get Firebase ID token (pre-PIN)', async () => {
-      const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
-      idTokenPrePin = result.id_token
+      const parsed = FirebaseRefreshSchema.parse(
+        await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
+      )
+      idTokenPrePin = parsed.id_token
     })
 
     await test.step('Create PIN', async () => {
+      const payload = { pincode: PINCODE }
       const response = await request.post(endpoints.signup.createPin, {
         headers: AUTH_HEADERS(idTokenPrePin),
-        data: { pincode: PINCODE },
+        data: payload,
       })
-
-      expect(response.status()).toBe(200)
-      const body = await response.json()
-      expect(body.message).toBe('Create PIN successfully')
+      const parsed = await parseResponse(response, CreatePinSchema, 'Create PIN', 200, payload)
+      expect(parsed.message).toBe('Create PIN successfully')
     })
 
     await test.step('Get Firebase ID token (post-PIN)', async () => {
-      const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
-      idTokenPostPin = result.id_token
+      const parsed = FirebaseRefreshSchema.parse(
+        await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
+      )
+      idTokenPostPin = parsed.id_token
     })
 
     await test.step('Get profile — verify consent accepted', async () => {
       const response = await request.get(endpoints.signup.getProfile, {
         headers: AUTH_HEADERS(idTokenPostPin),
       })
-
-      expect(response.status()).toBe(200)
-      const body = await response.json()
-      expect(body.profile.is_consent_accepted).toBe(true)
-      expect(body.profile.has_pincode).toBe(true)
-      signedUpUserId = String(body.profile.user_id)
+      const parsed = await parseResponse(response, GetProfileSchema, 'Get Profile')
+      expect(parsed.profile.is_consent_accepted).toBe(true)
+      expect(parsed.profile.has_pincode).toBe(true)
+      signedUpUserId = parsed.profile.user_id
     })
 
     await test.step('DB — verify consent_status = pending_review', async () => {
       const status = await getEmployeeConsentStatus(employee.employee_id, COMPANY_ID)
-
       expect(status).toBe('pending_review')
     })
 
     await test.step('Logout (best-effort)', async () => {
       try {
-        await request.post(endpoints.signup.logout, {
-          headers: AUTH_HEADERS(idTokenPostPin),
-        })
+        await request.post(endpoints.signup.logout, { headers: AUTH_HEADERS(idTokenPostPin) })
       } catch {
         // logout failure does not fail the test
       }
@@ -363,9 +331,7 @@ test.describe('Digital Consent', () => {
   test('TC-CONSENT-004 · Non-signed-up employees remain consent_status = new', async () => {
     await test.step('DB — verify TS01902 and TS01903 still have consent_status = new', async () => {
       const nonSignedUpIds = [TEST_EMPLOYEES[2].employee_id, TEST_EMPLOYEES[3].employee_id]
-
       const rows = await getEmployeeProfiles(nonSignedUpIds, COMPANY_ID)
-
       expect(rows.length).toBe(2)
       for (const row of rows) {
         expect(row.consent_status).toBe('new')
