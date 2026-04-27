@@ -143,6 +143,9 @@ export async function importDigitalConsentData(
   }
   validateSchema(await validateResponse.json(), ImportSuccessSchema, 'Validate')
 
+  // Brief wait to allow validation processing to settle before confirm
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
   // Step 7: Confirm import
   const importResponse = await request.post(endpoints.consent.importConfirm(jobId), {
     headers: authHeaders,

@@ -48,7 +48,7 @@ export function generatePhone(): string {
 }
 
 export function generateEmployeeId(): string {
-  return `EMP${Date.now()}${Math.floor(Math.random() * 100)}`
+  return `EMPAPI${Date.now()}${Math.floor(Math.random() * 100)}`
 }
 
 export function generateAccountNo(): string {

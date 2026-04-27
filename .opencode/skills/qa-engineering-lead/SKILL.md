@@ -68,6 +68,7 @@ description: QA coding standards, project-specific rules, and anti-patterns for 
 - The only exception: the DELETE CRUD test case itself must use `deleteEmployeeViaAPI` to test the API endpoint, followed immediately by `hardDeleteEmployee` to clear the paycycle constraints.
 - `deleteEmployee()` in `api/helpers/employee.ts` and `deleteEmployeeViaAPI()` in `shared/employee-api.ts` are kept solely for testing the soft-delete API behaviour. They must not be used for routine test cleanup.
 - `deleteEmployeeProfileRecords()` in `shared/db-helpers.ts` remains for digital consent import cleanup only — it targets `employee_profile` / `employee_profile_audit` and is separate from `hardDeleteEmployee`.
+- `user_provider` has **no FK constraint to `users`** — deleting from `users` does not cascade to `user_provider`. `hardDeleteEmployee()` explicitly deletes from `user_provider` before `users`. Never assume cascades cover this table.
 
 ## 10. Code Comments
 

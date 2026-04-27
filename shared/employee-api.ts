@@ -6,14 +6,15 @@ import { generateAccountNo, resolvePhone, generateEmployeeId } from '../api/help
 
 const EmployeeResponseSchema = z.object({
   information: z.object({
-    user_id: z.number(),
+    // API returns numeric IDs as strings — normalise to number to match EmployeeResponse interface
+    user_id: z.union([z.string(), z.number()]).transform(Number),
     first_name: z.string().optional(),
     last_name: z.string().optional(),
     email: z.string().optional(),
     phone: z.string().optional(),
     employee_id: z.string().optional(),
     company_id: z.string().optional(),
-    paycycle_id: z.number().optional(),
+    paycycle_id: z.union([z.string(), z.number()]).transform(Number).optional(),
     status: z.string().optional(),
     created_at: z.string().optional(),
     updated_at: z.string().optional(),

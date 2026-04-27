@@ -1,6 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
 import dotenv from 'dotenv'
-import { getApiBaseUrl } from './shared/utils/env'
 
 dotenv.config({ path: process.env.DOTENV_FILE ?? '.env' })
 
@@ -8,6 +7,13 @@ const ENV = process.env.ENV ?? 'dev'
 const KNOWN_ENVS = ['dev', 'staging']
 if (!KNOWN_ENVS.includes(ENV)) {
   throw new Error(`Unknown ENV: "${ENV}". Must be one of: ${KNOWN_ENVS.join(', ')}`)
+}
+
+// Kept local to playwright.config.ts — importing from shared/utils/env.ts would
+// cause env.ts to execute before dotenv.config() runs here, loading the wrong .env file.
+const baseURLs: Record<string, string> = {
+  dev: 'https://apiv2-dev.salary-hero.com',
+  staging: 'https://apiv2-staging.salary-hero.com',
 }
 
 const adminURLs: Record<string, string> = {
@@ -40,7 +46,7 @@ export default defineConfig({
       testDir: './api/tests',
       timeout: 60000,
       use: {
-        baseURL: getApiBaseUrl(),
+        baseURL: baseURLs[ENV],
         extraHTTPHeaders: {
           'x-app-version': process.env.APP_VERSION ?? '10.0.0',
           'Content-Type': 'application/json',

@@ -126,7 +126,8 @@ export async function getEmployeeConsentStatus(
  *   5. user_identity  (references user_balance.balance_uid)
  *   6. user_balance
  *   7. user_bank
- *   8. users
+ *   8. user_provider  (no FK to users — must delete explicitly, not cascaded)
+ *   9. users
  *
  * All statements run inside a single transaction — partial cleanup is never
  * left behind if one statement fails.
@@ -191,6 +192,12 @@ export async function hardDeleteEmployee(userId: string): Promise<void> {
     // user_bank — no FK dependents, safe to delete any time before users
     await client.query(
       `DELETE FROM user_bank WHERE user_id = $1::bigint`,
+      [numericId]
+    )
+
+    // user_provider — no FK constraint to users, deletion is not cascaded automatically
+    await client.query(
+      `DELETE FROM user_provider WHERE user_id = $1::bigint`,
       [numericId]
     )
 

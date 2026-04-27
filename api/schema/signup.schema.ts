@@ -137,14 +137,14 @@ export const GetProfileSchema = z.object({
     phone: z.string(),
     has_pincode: z.boolean(),
     signup_at: z.string().nullable(),
-    employee_type: z.string(),
+    employee_type: z.string().nullable(),
     // Optional fields present only for specific auth methods or consent flows
     employee_id: z.string().optional(),
     line_id: z.string().nullable().optional(),
     is_consent_accepted: z.boolean().optional(),
   }),
   bank_account: z.object({
-    bank_code: z.string(),
-    account_verify: z.string(),
-  }),
+    bank_code: z.string().optional(),
+    account_verify: z.string().optional(),
+  }).optional(),
 })

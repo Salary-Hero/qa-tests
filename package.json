@@ -15,6 +15,8 @@
     "test:all": "DOTENV_FILE=.env.dev ENV=dev playwright test",
     "report": "playwright show-report",
     "tsc": "tsc --noEmit",
+    "cleanup:dev": "ENV=dev DOTENV_CONFIG_PATH=.env.dev node_modules/.bin/tsx -r dotenv/config scripts/cleanup-test-data.ts",
+    "cleanup:staging": "ENV=staging DOTENV_CONFIG_PATH=.env.staging node_modules/.bin/tsx -r dotenv/config scripts/cleanup-test-data.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -24,6 +26,7 @@
     "@types/pg": "^8.20.0",
     "dotenv": "^17.4.1",
     "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.2"
   },
   "dependencies": {

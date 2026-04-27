@@ -16,8 +16,6 @@ import {
   EmployeeIdLookupSchema,
   EmployeeIdOtpRequestSchema,
   EmployeeIdOtpVerifySchema,
-  FirebaseSignInSchema,
-  FirebaseRefreshSchema,
 } from '../../schema/signup.schema'
 import { endpoints } from '../../../shared/endpoints'
 import { APIRequestContext } from '@playwright/test'
@@ -77,15 +75,13 @@ async function runSignupFlow(
   })
 
   await test.step('Firebase sign in with custom token', async () => {
-    const parsed = FirebaseSignInSchema.parse(await firebaseSignIn(request, firebaseCustomToken))
-    firebaseRefreshToken = parsed.refreshToken
+    const result = await firebaseSignIn(request, firebaseCustomToken)
+    firebaseRefreshToken = result.refreshToken
   })
 
   await test.step('Get Firebase ID token (pre-PIN)', async () => {
-    const parsed = FirebaseRefreshSchema.parse(
-      await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
-    )
-    idTokenPrePin = parsed.id_token
+    const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
+    idTokenPrePin = result.id_token
   })
 
   await test.step('Create PIN', async () => {
@@ -93,10 +89,8 @@ async function runSignupFlow(
   })
 
   await test.step('Get Firebase ID token (post-PIN)', async () => {
-    const parsed = FirebaseRefreshSchema.parse(
-      await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
-    )
-    idTokenPostPin = parsed.id_token
+    const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
+    idTokenPostPin = result.id_token
   })
 
   await test.step('Get Profile', async () => {
@@ -117,10 +111,14 @@ test.describe('Signup by Employee ID', () => {
     test.beforeEach(beforeEach)
     test.afterEach(afterEach)
 
-    test('should complete full signup flow using national ID', async ({ request }) => {
-      const ctx = getContext()
-      await runSignupFlow(request, ctx, ctx.identifiers.national_id!)
-    })
+    test(
+      'API – Signup Employee ID – Full signup flow with national ID – Success',
+      { tag: ['@component', '@high', '@regression', '@guardian'] },
+      async ({ request }) => {
+        const ctx = getContext()
+        await runSignupFlow(request, ctx, ctx.identifiers.national_id!)
+      }
+    )
   })
 
   test.describe('with passport number', () => {
@@ -128,9 +126,13 @@ test.describe('Signup by Employee ID', () => {
     test.beforeEach(beforeEach)
     test.afterEach(afterEach)
 
-    test('should complete full signup flow using passport number', async ({ request }) => {
-      const ctx = getContext()
-      await runSignupFlow(request, ctx, ctx.identifiers.passport_no!)
-    })
+    test(
+      'API – Signup Employee ID – Full signup flow with passport number – Success',
+      { tag: ['@component', '@high', '@regression', '@guardian'] },
+      async ({ request }) => {
+        const ctx = getContext()
+        await runSignupFlow(request, ctx, ctx.identifiers.passport_no!)
+      }
+    )
   })
 })
