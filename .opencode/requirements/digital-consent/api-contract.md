@@ -339,7 +339,6 @@ Identical to all other signup flows. See [shared/authentication.md](../shared/au
 ```json
 {
   "profile": {
-    "is_consent_accepted": true,
     "status": "inactive",
     "has_pincode": true
   },
@@ -355,8 +354,8 @@ Identical to all other signup flows. See [shared/authentication.md](../shared/au
 ```
 
 **Key assertions:**
-- `profile.is_consent_accepted = true`
 - `profile.has_pincode = true`
+- `employee_profile.consent_status` is `pending_review` or `new` (`is_consent_accepted` is deprecated — do not use)
 
 ---
 

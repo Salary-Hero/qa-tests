@@ -81,7 +81,7 @@ Runs once after all 4 test cases, regardless of pass/fail.
 | 12 | Firebase `securetoken/v1/token` (pre-PIN) `{ grant_type: "refresh_token", refresh_token }` | 200 · `id_token` returned |
 | 13 | `POST /v1/user/account/profile/pincode/create` `{ pincode }` | 200 · `message = "Create PIN successfully"` |
 | 14 | Firebase `securetoken/v1/token` (post-PIN) | 200 · new `id_token` returned |
-| 15 | `GET /v1/user/account/profile` | 200 · `profile.is_consent_accepted = true` · `profile.has_pincode = true` |
+| 15 | `GET /v1/user/account/profile` | 200 · `profile.has_pincode = true` · `employee_profile.consent_status` is `pending_review` or `new` |
 | DB | `SELECT consent_status FROM employee_profile WHERE employee_id = 'EMPAPI-CONSENT-001' AND company_id = 514` | `consent_status = 'pending_review'` |
 
 **afterEach:**

@@ -138,11 +138,14 @@ export const GetProfileSchema = z.object({
     has_pincode: z.boolean(),
     signup_at: z.string().nullable(),
     employee_type: z.string().nullable(),
-    // Optional fields present only for specific auth methods or consent flows
+    // Optional fields present only for specific auth methods
     employee_id: z.string().optional(),
     line_id: z.string().nullable().optional(),
-    is_consent_accepted: z.boolean().optional(),
   }),
+  // Present only for digital consent users
+  employee_profile: z.object({
+    consent_status: z.string().optional(),
+  }).optional(),
   bank_account: z.object({
     bank_code: z.string().optional(),
     account_verify: z.string().optional(),

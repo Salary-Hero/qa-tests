@@ -2,8 +2,9 @@
  * Cleanup script for leftover QA test employees.
  *
  * Identifies employees by two patterns, scoped to QA company IDs only:
- *   - employee_id LIKE 'EMPAPI%'   (all seeded employees — signup + CRUD tests)
- *   - email LIKE 'qa-signup-%@qa.com'  (all signup-flow employees)
+ *   - employee_id LIKE 'EMPAPI%'           (all seeded employees — signup + CRUD tests)
+ *   - email LIKE 'qa-signup-%@qa.com'       (current email domain)
+ *   - email LIKE 'qa-signup-%@test.example.com'  (legacy domain used before standardisation)
  *
  * Usage:
  *   yarn cleanup:dev              preview mode — prints users, asks confirmation
@@ -11,8 +12,8 @@
  *   yarn cleanup:staging --force
  */
 
-// Env vars are loaded via -r dotenv/config with DOTENV_CONFIG_PATH set by the
-// package.json script — no explicit dotenv.config() call needed here.
+// Env vars are loaded via -r dotenv/config in the package.json script,
+// which reads .env automatically before this script executes.
 
 import * as readline from 'readline'
 import { seedConfigForEnv } from '../shared/utils/seed-config'
@@ -55,6 +56,7 @@ async function findLeftoverUsers(): Promise<LeaftoverUser[]> {
        AND (
           e.employee_id LIKE 'EMPAPI%'
           OR u.email LIKE 'qa-signup-%@qa.com'
+          OR u.email LIKE 'qa-signup-%@test.example.com'
        )
      ORDER BY u.created_at DESC`,
     [qaCompanyIds]

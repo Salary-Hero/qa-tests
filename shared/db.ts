@@ -6,14 +6,17 @@ if (isNaN(port) || port <= 0) {
   throw new Error(`Invalid DB_PORT: "${rawPort}" — must be a positive integer`)
 }
 
-if (!process.env.DB_NAME) throw new Error('DB_NAME environment variable is not set')
+// DB_NAME is per-environment — dev and staging use the same RDS host but different databases.
+const envKey = (process.env.ENV ?? 'dev').toUpperCase()
+const dbName = process.env[`DB_NAME_${envKey}`]
+if (!dbName) throw new Error(`DB_NAME_${envKey} environment variable is not set`)
 if (!process.env.DB_USER) throw new Error('DB_USER environment variable is not set')
 if (!process.env.DB_PASSWORD) throw new Error('DB_PASSWORD environment variable is not set')
 
 const pool = new Pool({
   host: process.env.DB_HOST ?? 'localhost',
   port,
-  database: process.env.DB_NAME,
+  database: dbName,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
 });

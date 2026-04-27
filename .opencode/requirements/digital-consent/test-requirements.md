@@ -59,7 +59,7 @@ A test **passes** when:
 3. OTP verify returns Firebase custom token
 4. Firebase sign-in and token refresh succeed
 5. PIN creation returns `"Create PIN successfully"`
-6. Profile returns `is_consent_accepted: true`
+6. Profile returns `employee_profile.consent_status` of `pending_review` or `new`
 7. DB confirms `consent_status = 'pending_review'` for the signed-up employee
 
 A test **fails** if:

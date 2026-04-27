@@ -103,10 +103,6 @@ test.describe('Signup by LINE', () => {
         expect(body.profile.has_pincode).toBe(true)
         expect(body.profile.signup_at).not.toBeNull()
       })
-
-      await test.step('Logout', async () => {
-        await logout(request, idTokenPostPin)
-      })
     }
   )
 })

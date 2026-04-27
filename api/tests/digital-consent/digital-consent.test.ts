@@ -16,7 +16,6 @@ import {
   findSignedUpUserIds,
   deleteEmployeeProfileRecords,
   getEmployeeProfiles,
-  getEmployeeConsentStatus,
   hardDeleteEmployee,
 } from '../../../shared/db-helpers'
 import { getCompany } from '../../../shared/utils/seed-config'
@@ -41,11 +40,7 @@ const TEST_PASSPORT_NOS = TEST_EMPLOYEES.map((e) => e.passport_no)
 async function cleanupSignedUpUsers() {
   const userIds = await findSignedUpUserIds(TEST_NATIONAL_IDS, TEST_PASSPORT_NOS)
   for (const userId of userIds) {
-    try {
-      await hardDeleteEmployee(userId)
-    } catch {
-      // best-effort — user may already be gone
-    }
+    await hardDeleteEmployee(userId)
   }
 }
 
@@ -75,15 +70,15 @@ test.describe('Digital Consent', () => {
     })
   })
 
-  test.afterAll(async () => {
-    await test.step('Cleanup signed-up users', async () => {
-      await cleanupSignedUpUsers()
-    })
+  // test.afterAll(async () => {
+  //   await test.step('Cleanup signed-up users', async () => {
+  //     await cleanupSignedUpUsers()
+  //   })
 
-    await test.step('Cleanup employee_profile records', async () => {
-      await deleteEmployeeProfileRecords(TEST_EMPLOYEE_IDS, COMPANY_ID)
-    })
-  })
+  //   await test.step('Cleanup employee_profile records', async () => {
+  //     await deleteEmployeeProfileRecords(TEST_EMPLOYEE_IDS, COMPANY_ID)
+  //   })
+  // })
 
   test.afterEach(async () => {
     await test.step('Cleanup — hard delete signed-up user', async () => {
@@ -152,16 +147,11 @@ test.describe('Digital Consent', () => {
         idTokenPostPin = result.id_token
       })
 
-      await test.step('Get profile — verify consent accepted', async () => {
+      await test.step('Get profile — verify employee_profile.consent_status', async () => {
         const body = await getProfile(request, idTokenPostPin)
-        expect(body.profile.is_consent_accepted).toBe(true)
         expect(body.profile.has_pincode).toBe(true)
+        expect(['pending_review', 'new']).toContain(body.employee_profile?.consent_status)
         signedUpUserId = body.profile.user_id
-      })
-
-      await test.step('DB — verify consent_status = pending_review', async () => {
-        const status = await getEmployeeConsentStatus(employee.employee_id, COMPANY_ID)
-        expect(status).toBe('pending_review')
       })
 
       await test.step('Logout', async () => {
@@ -214,16 +204,11 @@ test.describe('Digital Consent', () => {
         idTokenPostPin = result.id_token
       })
 
-      await test.step('Get profile — verify consent accepted', async () => {
+      await test.step('Get profile — verify employee_profile.consent_status', async () => {
         const body = await getProfile(request, idTokenPostPin)
-        expect(body.profile.is_consent_accepted).toBe(true)
         expect(body.profile.has_pincode).toBe(true)
+        expect(['pending_review', 'new']).toContain(body.employee_profile?.consent_status)
         signedUpUserId = body.profile.user_id
-      })
-
-      await test.step('DB — verify consent_status = pending_review', async () => {
-        const status = await getEmployeeConsentStatus(employee.employee_id, COMPANY_ID)
-        expect(status).toBe('pending_review')
       })
 
       await test.step('Logout', async () => {

@@ -1,6 +1,4 @@
 .env
-.env.dev
-.env.staging
 node_modules/
 dist/
 playwright-report/
