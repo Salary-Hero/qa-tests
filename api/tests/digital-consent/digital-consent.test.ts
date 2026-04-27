@@ -1,17 +1,19 @@
 import { test, expect } from '@playwright/test'
-import { getAdminToken } from '../../helpers/admin-auth'
+import { getAdminToken } from '../../helpers/admin-console-auth'
 import { importDigitalConsentData } from '../../helpers/digital-consent-import'
 import { resolvePhone, generateEmail } from '../../helpers/identifiers'
 import {
   firebaseSignIn,
   firebaseRefreshToken as firebaseRefreshTokenAPI,
 } from '../../helpers/firebase'
-import { createPin, getProfile, logout } from '../../helpers/signup-flow'
+import { createPin } from '../../helpers/pin-api'
+import { getProfile } from '../../helpers/profile-api'
+import { logout } from '../../helpers/auth-api'
 import {
   validateScreeningIdentity,
   submitConsentRequestForm,
   verifyConsentOtp,
-} from '../../helpers/consent-flow'
+} from '../../helpers/digital-consent-signup-api'
 import {
   findSignedUpUserIds,
   deleteEmployeeProfileRecords,

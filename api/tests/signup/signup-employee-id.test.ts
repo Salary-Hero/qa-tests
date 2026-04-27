@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test'
-import { OTP } from '../../../shared/utils/seed-config'
 import { SeedContext } from '../../helpers/seed'
 import {
   employeeIdSignupProfile,
@@ -10,16 +9,15 @@ import {
   firebaseRefreshToken as firebaseRefreshTokenAPI,
 } from '../../helpers/firebase'
 import { setupSeedTeardown } from '../../helpers/test-setup'
-import { parseResponse } from '../../../shared/utils/response'
-import { createPin, getProfile, logout } from '../../helpers/signup-flow'
+import { createPin } from '../../helpers/pin-api'
+import { getProfile } from '../../helpers/profile-api'
+import { logout } from '../../helpers/auth-api'
 import {
-  EmployeeIdLookupSchema,
-  EmployeeIdOtpRequestSchema,
-  EmployeeIdOtpVerifySchema,
-} from '../../schema/signup.schema'
-import { endpoints } from '../../../shared/endpoints'
+  lookupEmployee,
+  requestEmployeeIdOtp,
+  verifyEmployeeIdOtp,
+} from '../../helpers/employee-id-signup-api'
 import { APIRequestContext } from '@playwright/test'
-import { DEFAULT_REQUEST_HEADERS, EMPLOYEE_ID_VERIFY_PARAMS } from '../../helpers/request'
 
 async function runSignupFlow(
   request: APIRequestContext,
@@ -37,41 +35,15 @@ async function runSignupFlow(
   let idTokenPostPin: string
 
   await test.step('Lookup employee by ID and identity', async () => {
-    const payload = { employee_id, identity: verificationIdentifier, company_id }
-    const response = await request.post(endpoints.signup.employeeIdLookup, {
-      data: payload,
-      headers: DEFAULT_REQUEST_HEADERS,
-    })
-    const parsed = await parseResponse(response, EmployeeIdLookupSchema, 'Employee ID lookup', 200, payload)
-    expect(parsed.is_signup).toBe(false)
-    authChallenge = parsed.verification_info.auth_challenge
+    authChallenge = await lookupEmployee(request, employee_id!, verificationIdentifier, company_id)
   })
 
   await test.step('Request OTP for phone', async () => {
-    const payload = { phone, auth_challenge: authChallenge }
-    const response = await request.post(endpoints.signup.employeeIdAddPhone, {
-      params: { verification_method: 'otp', action: 'request' },
-      data: payload,
-      headers: DEFAULT_REQUEST_HEADERS,
-    })
-    const parsed = await parseResponse(response, EmployeeIdOtpRequestSchema, 'Employee ID OTP request', 200, payload)
-    refCode = parsed.verification.ref_code
+    refCode = await requestEmployeeIdOtp(request, phone!, authChallenge)
   })
 
   await test.step('Verify OTP', async () => {
-    const payload = {
-      phone,
-      auth_challenge: authChallenge,
-      fcm_token: '',
-      verification: { ref_code: refCode, code: OTP },
-    }
-    const response = await request.post(endpoints.signup.employeeIdAddPhone, {
-      params: { ...EMPLOYEE_ID_VERIFY_PARAMS, verification_method: 'otp' },
-      data: payload,
-      headers: DEFAULT_REQUEST_HEADERS,
-    })
-    const parsed = await parseResponse(response, EmployeeIdOtpVerifySchema, 'Employee ID OTP verify', 200, payload)
-    firebaseCustomToken = parsed.verification.token
+    firebaseCustomToken = await verifyEmployeeIdOtp(request, phone!, authChallenge, refCode)
   })
 
   await test.step('Firebase sign in with custom token', async () => {
@@ -98,6 +70,10 @@ async function runSignupFlow(
     expect(body.profile.employee_id).toBe(employee_id)
     expect(body.profile.has_pincode).toBe(true)
     expect(body.profile.signup_at).not.toBeNull()
+  })
+
+  await test.step('Logout', async () => {
+    await logout(request, idTokenPostPin)
   })
 }
 

@@ -4,7 +4,7 @@ import { endpoints } from '../../shared/endpoints'
 import { Company } from '../../shared/utils/seed-config'
 import { resolvePhone, generateAccountNo } from './identifiers'
 import { Identifiers } from './seed'
-import { getAdminToken } from './admin-auth'
+import { getAdminToken } from './admin-console-auth'
 
 const CreateEmployeeResponseSchema = z.object({
   information: z.object({

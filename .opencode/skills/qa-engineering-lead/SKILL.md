@@ -22,7 +22,7 @@ description: QA coding standards, project-specific rules, and anti-patterns for 
 - **PINCODE**: `PINCODE` from `shared/utils/seed-config.ts` only — same pattern as OTP.
 - **Base URLs**: `playwright.config.ts` only. No duplicate URL maps in helpers. Exception: `getApiBaseUrl()` in `shared/utils/env.ts` is used exclusively for native `fetch` calls that cannot use Playwright's `request` context (e.g. multipart file upload in `digital-consent-import.ts`).
 - **DB name**: `DB_NAME_DEV` / `DB_NAME_STAGING` — same RDS host, different database per environment. `shared/db.ts` reads the correct key based on `ENV`. Never use a plain `DB_NAME` key.
-- **Admin auth**: `getAdminToken()` from `api/helpers/admin-auth.ts` only (cached).
+- **Admin auth**: `getAdminToken()` from `api/helpers/admin-console-auth.ts` only (cached).
 
 ## 3. DB Query Placement
 
@@ -117,9 +117,15 @@ API call specific to one test file only?
 | `shared/utils/response.ts` | `parseResponse()` — the only way to validate API responses |
 | `api/helpers/identifiers.ts` | Random identifier generators — the only place they live |
 | `api/helpers/request.ts` | HTTP header constants: `DEFAULT_REQUEST_HEADERS`, `AUTH_HEADERS()` |
-| `api/helpers/admin-auth.ts` | `getAdminToken()` — cached admin token |
-| `api/helpers/signup-flow.ts` | `createPin()`, `getProfile()`, `logout()` — shared by all signup tests |
-| `api/helpers/consent-flow.ts` | `validateScreeningIdentity()`, `submitConsentRequestForm()`, `verifyConsentOtp()` |
+| `api/helpers/firebase.ts` | `firebaseSignIn()`, `firebaseRefreshToken()` |
+| `api/helpers/admin-console-auth.ts` | `getAdminToken()` — cached admin token |
+| `api/helpers/pin-api.ts` | `createPin()` — POST /pincode/create |
+| `api/helpers/profile-api.ts` | `getProfile()` — GET /profile |
+| `api/helpers/auth-api.ts` | `logout()` — POST /logout |
+| `api/helpers/phone-signup-api.ts` | `requestPhoneOtp()`, `verifyPhoneOtp()` |
+| `api/helpers/line-signup-api.ts` | `submitLineToken()`, `requestLineOtp()`, `verifyLineOtp()` |
+| `api/helpers/employee-id-signup-api.ts` | `lookupEmployee()`, `requestEmployeeIdOtp()`, `verifyEmployeeIdOtp()` |
+| `api/helpers/digital-consent-signup-api.ts` | `validateScreeningIdentity()`, `submitConsentRequestForm()`, `verifyConsentOtp()` |
 | `api/helpers/profiles/` | Seed profiles — one file per auth method |
 | `api/schema/` | Zod response schemas — one file per feature area |
 

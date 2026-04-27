@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { getAdminToken } from '../../helpers/admin-auth'
+import { getAdminToken } from '../../helpers/admin-console-auth'
 import {
   createEmployeeViaAPI,
   updateEmployeeViaAPI,

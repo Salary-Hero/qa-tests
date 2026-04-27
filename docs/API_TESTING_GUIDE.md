@@ -143,14 +143,19 @@ qa-tests/
 │
 ├── api/
 │   ├── helpers/
-│   │   ├── admin-auth.ts        # getAdminToken() — cached admin Bearer token
+│   │   ├── admin-console-auth.ts # getAdminToken() — cached admin Bearer token
 │   │   ├── identifiers.ts       # resolvePhone(), generateEmail(), generateEmployeeId(), etc.
 │   │   ├── request.ts           # Header constants: DEFAULT_REQUEST_HEADERS, AUTH_HEADERS()
 │   │   ├── firebase.ts          # firebaseSignIn(), firebaseRefreshToken()
 │   │   ├── line-auth.ts         # getLineAccessToken()
 │   │   ├── employee.ts          # createEmployee(), findEmployeeByIdentifier() — used by seed profiles
-│   │   ├── signup-flow.ts       # createPin(), getProfile(), logout() — shared by all signup tests
-│   │   ├── consent-flow.ts      # validateScreeningIdentity(), submitConsentRequestForm(), verifyConsentOtp()
+│   │   ├── pin-api.ts            # createPin()
+│   │   ├── profile-api.ts       # getProfile()
+│   │   ├── auth-api.ts          # logout()
+│   │   ├── phone-signup-api.ts  # requestPhoneOtp(), verifyPhoneOtp()
+│   │   ├── line-signup-api.ts   # submitLineToken(), requestLineOtp(), verifyLineOtp()
+│   │   ├── employee-id-signup-api.ts  # lookupEmployee(), requestEmployeeIdOtp(), verifyEmployeeIdOtp()
+│   │   ├── digital-consent-signup-api.ts  # validateScreeningIdentity(), submitConsentRequestForm(), verifyConsentOtp()
 │   │   ├── digital-consent-import.ts  # importDigitalConsentData() — 7-step admin import pipeline
 │   │   ├── seed.ts              # SeedProfile / SeedContext types + seed/cleanup execution
 │   │   ├── test-setup.ts        # setupSeedTeardown() — wires beforeEach/afterEach from a profile
@@ -214,7 +219,7 @@ What are you creating?
 │     → api/helpers/identifiers.ts only
 │
 ├── A reusable API call used across 2+ test files?
-│     → api/helpers/{feature}-flow.ts   (e.g. signup-flow.ts, consent-flow.ts)
+│     → api/helpers/{feature}-signup-api.ts   (e.g. phone-signup-api.ts, line-signup-api.ts)
 │
 └── An API call used in only one test file?
       → inline in the test file
@@ -232,9 +237,14 @@ What are you creating?
 | `shared/utils/response.ts` | `parseResponse()` — the one function to validate every API response |
 | `api/helpers/identifiers.ts` | Random identifier generators — the only place these should live |
 | `api/helpers/request.ts` | HTTP header constants: `DEFAULT_REQUEST_HEADERS`, `AUTH_HEADERS()` |
-| `api/helpers/admin-auth.ts` | `getAdminToken()` — cached admin token, call this everywhere |
-| `api/helpers/signup-flow.ts` | Steps shared by all signup tests: `createPin`, `getProfile`, `logout` |
-| `api/helpers/consent-flow.ts` | Steps shared by consent tests: screening, form submit, OTP verify |
+| `api/helpers/admin-console-auth.ts` | `getAdminToken()` — cached admin token, call this everywhere |
+| `api/helpers/pin-api.ts` | `createPin()` |
+| `api/helpers/profile-api.ts` | `getProfile()` |
+| `api/helpers/auth-api.ts` | `logout()` |
+| `api/helpers/phone-signup-api.ts` | Phone signup API calls |
+| `api/helpers/line-signup-api.ts` | LINE signup API calls |
+| `api/helpers/employee-id-signup-api.ts` | Employee ID signup API calls |
+| `api/helpers/digital-consent-signup-api.ts` | Digital Consent signup API calls |
 | `api/helpers/profiles/` | Seed profiles — one file per auth method |
 | `api/schema/` | Zod response schemas — one file per feature |
 
@@ -321,12 +331,14 @@ headers: DEFAULT_REQUEST_HEADERS
 headers: AUTH_HEADERS(idToken)
 ```
 
-### `api/helpers/signup-flow.ts` — shared signup steps
+### Feature API helpers — one file per responsibility
 
-Three steps that appear in every signup flow are extracted here:
+Each API feature has its own focused helper file:
 
 ```typescript
-import { createPin, getProfile, logout } from '../../helpers/signup-flow'
+import { createPin } from '../../helpers/pin-api'
+import { getProfile } from '../../helpers/profile-api'
+import { logout } from '../../helpers/auth-api'
 
 await test.step('Create PIN', async () => {
   await createPin(request, idTokenPrePin)  // POST /v1/user/account/profile/pincode/create
@@ -338,10 +350,10 @@ await test.step('Get Profile', async () => {
 })
 ```
 
-### `api/helpers/admin-auth.ts` — admin token
+### `api/helpers/admin-console-auth.ts` — admin token
 
 ```typescript
-import { getAdminToken } from '../../helpers/admin-auth'
+import { getAdminToken } from '../../helpers/admin-console-auth'
 
 const token = await getAdminToken(request)  // cached — safe to call multiple times
 ```

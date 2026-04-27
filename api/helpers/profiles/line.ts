@@ -6,7 +6,7 @@ import {
 import { resolvePhone, generateEmail, generateEmployeeId } from '../identifiers'
 import { CleanupStep, Employee, SeedProfile } from '../seed'
 import { getCompany, getFixedIdentifier } from '../../../shared/utils/seed-config'
-import { getAdminToken } from '../admin-auth'
+import { getAdminToken } from '../admin-console-auth'
 import { updateEmployeeViaAPI, EmployeePatchPayload } from '../../../shared/employee-api'
 import { hardDeleteEmployee } from '../../../shared/db-helpers'
 
