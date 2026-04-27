@@ -164,10 +164,10 @@ Same endpoint as Step 2. Called again after column mapping to finalise the confi
   "config": { "..." },
   "preview": {
     "create_rows": [
-      { "employee_id": "TS01900", "national_id": 2001000099000, "passport_no": "TSPP1900", "company_id": 514 },
-      { "employee_id": "TS01901", "national_id": 2001000099001, "passport_no": "TSPP1901", "company_id": 514 },
-      { "employee_id": "TS01902", "national_id": 2001000099002, "passport_no": "TSPP1902", "company_id": 514 },
-      { "employee_id": "TS01903", "national_id": 2001000099003, "passport_no": "TSPP1903", "company_id": 514 }
+      { "employee_id": "EMPAPI-CONSENT-001", "national_id": 2001000099000, "passport_no": "TSPP1900", "company_id": 514 },
+      { "employee_id": "EMPAPI-CONSENT-002", "national_id": 2001000099001, "passport_no": "TSPP1901", "company_id": 514 },
+      { "employee_id": "EMPAPI-CONSENT-003", "national_id": 2001000099002, "passport_no": "TSPP1902", "company_id": 514 },
+      { "employee_id": "EMPAPI-CONSENT-004", "national_id": 2001000099003, "passport_no": "TSPP1903", "company_id": 514 }
     ],
     "update_rows": [],
     "delete_rows": [],
@@ -225,7 +225,7 @@ Steps 8–10 are consent-specific public endpoints. Steps 11–14 use Firebase (
 **Request:**
 ```json
 {
-  "employee_id": "TS01900",
+  "employee_id": "EMPAPI-CONSENT-001",
   "personal_id": "2001000099000",
   "personal_id_type": "national_id",
   "company_id": 514
@@ -235,7 +235,7 @@ Steps 8–10 are consent-specific public endpoints. Steps 11–14 use Firebase (
 For passport signup, use:
 ```json
 {
-  "employee_id": "TS01901",
+  "employee_id": "EMPAPI-CONSENT-002",
   "personal_id": "TSPP1901",
   "personal_id_type": "passport_no",
   "company_id": 514
@@ -259,7 +259,7 @@ For passport signup, use:
   "personal_id_type": "national_id",
   "company_id": 514,
   "screening": {
-    "employee_id": "TS01900",
+    "employee_id": "EMPAPI-CONSENT-001",
     "personal_id": "2001000099000"
   },
   "request_form": {
@@ -339,7 +339,6 @@ Identical to all other signup flows. See [shared/authentication.md](../shared/au
 ```json
 {
   "profile": {
-    "is_consent_accepted": true,
     "status": "inactive",
     "has_pincode": true
   },
@@ -355,8 +354,8 @@ Identical to all other signup flows. See [shared/authentication.md](../shared/au
 ```
 
 **Key assertions:**
-- `profile.is_consent_accepted = true`
 - `profile.has_pincode = true`
+- `employee_profile.consent_status` is `pending_review` or `new` (`is_consent_accepted` is deprecated — do not use)
 
 ---
 
@@ -368,14 +367,14 @@ Direct database queries used for verifying `employee_profile` state. No API endp
 -- After import (TC-CONSENT-001): expect 4 rows with consent_status = 'new'
 SELECT employee_id, consent_status
 FROM employee_profile
-WHERE employee_id IN ('TS01900', 'TS01901', 'TS01902', 'TS01903')
+WHERE employee_id IN ('EMPAPI-CONSENT-001', 'EMPAPI-CONSENT-002', 'EMPAPI-CONSENT-003', 'EMPAPI-CONSENT-004')
   AND company_id = 514
   AND deleted_at IS NULL;
 
 -- After signup (TC-CONSENT-002, TC-CONSENT-003): expect consent_status = 'pending_review'
 SELECT consent_status
 FROM employee_profile
-WHERE employee_id = 'TS01900'
+WHERE employee_id = 'EMPAPI-CONSENT-001'
   AND company_id = 514
   AND deleted_at IS NULL;
 ```

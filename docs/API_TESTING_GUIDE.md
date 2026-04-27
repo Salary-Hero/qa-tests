@@ -1,6 +1,6 @@
 # API Test Writing Guide
 
-A practical guide for QA engineers who are new to this codebase. No prior Playwright or TypeScript experience is assumed.
+A practical reference for QA engineers working in this codebase. No prior Playwright or TypeScript experience is assumed.
 
 ---
 
@@ -9,11 +9,13 @@ A practical guide for QA engineers who are new to this codebase. No prior Playwr
 1. [Prerequisites & Setup](#1-prerequisites--setup)
 2. [Running Tests](#2-running-tests)
 3. [Project Structure](#3-project-structure)
-4. [Reusable Helpers Overview](#4-reusable-helpers-overview)
-5. [Writing a Simple API Test](#5-writing-a-simple-api-test)
-6. [Schema Validation with Zod](#6-schema-validation-with-zod)
-7. [Seed & Teardown Pattern](#7-seed--teardown-pattern)
-8. [Checklist Before Writing a New Test](#8-checklist-before-writing-a-new-test)
+4. [Where Does Each Thing Go?](#4-where-does-each-thing-go)
+5. [Reusable Helpers Overview](#5-reusable-helpers-overview)
+6. [Writing a Test](#6-writing-a-test)
+7. [Schema Validation with Zod](#7-schema-validation-with-zod)
+8. [Seed & Teardown Pattern](#8-seed--teardown-pattern)
+9. [Test Naming Convention](#9-test-naming-convention)
+10. [Checklist Before Writing a New Test](#10-checklist-before-writing-a-new-test)
 
 ---
 
@@ -27,32 +29,25 @@ yarn install
 
 ### Create your `.env` file
 
-Copy the example file and fill in your credentials:
+Copy the example file and fill in the values:
 
 ```bash
 cp .env.example .env
 ```
 
-Then open `.env` and fill in every value. The file should look like this:
+The `_DEV` and `_STAGING` suffix on each key means one file holds credentials for both environments. `yarn test:api` uses `ENV=dev` and reads the `_DEV` keys; `yarn test:api:staging` uses `ENV=staging` and reads the `_STAGING` keys.
 
 ```dotenv
-# Which environment to run against: dev | staging
-ENV=dev
+# Admin credentials
+ADMIN_EMAIL_DEV=your-dev-admin@example.com
+ADMIN_PASSWORD_DEV=your-dev-password
 
-# OTP code used in tests (check with your team lead for staging value)
-OTP=111111
-PINCODE=000000
+ADMIN_EMAIL_STAGING=your-staging-admin@example.com
+ADMIN_PASSWORD_STAGING=your-staging-password
 
-# Admin credentials — one set per environment
-ADMIN_EMAIL_DEV=your-admin@example.com
-ADMIN_PASSWORD_DEV=your-password
-
-ADMIN_EMAIL_STAGING=your-admin@example.com
-ADMIN_PASSWORD_STAGING=your-password
-
-# Firebase API key — one per environment
-FIREBASE_API_KEY_DEV=your-key-here
-FIREBASE_API_KEY_STAGING=your-key-here
+# Firebase API keys
+FIREBASE_API_KEY_DEV=your-dev-key
+FIREBASE_API_KEY_STAGING=your-staging-key
 
 # LINE credentials (only needed for LINE signup tests)
 LINE_CHANNEL_ID_DEV=
@@ -63,32 +58,33 @@ LINE_CHANNEL_ID_STAGING=
 LINE_CHANNEL_SECRET_STAGING=
 LINE_REFRESH_TOKEN_STAGING=
 
-# Database connection (needed for employee and consent tests)
-DB_HOST=localhost
+# Database connection
+# DB_HOST/DB_USER/DB_PASSWORD are shared — same RDS instance for both environments.
+# DB_NAME differs per environment — dev and staging use separate databases on the same host.
+DB_HOST=your-rds-host
 DB_PORT=5432
-DB_NAME=your-db-name
+DB_NAME_DEV=your-dev-db-name
+DB_NAME_STAGING=your-staging-db-name
 DB_USER=your-db-user
 DB_PASSWORD=your-db-password
 ```
 
-> **Never commit `.env` to git.** It is listed in `.gitignore` for this reason.
+`OTP` and `PINCODE` are **not** in `.env` — they come from `shared/fixtures/seed-config.json` automatically (`111111` for dev, `199119` for staging).
+
+> **Never commit `.env` to git.** It is listed in `.gitignore`.
 
 ### How `ENV` works
 
-The `ENV` variable controls which server your tests run against and which set of credentials are loaded.
+`ENV` controls which server the tests hit and which credentials are loaded. You never need to set it manually — the `yarn` scripts handle it.
 
-| `ENV` value | API server | Credentials loaded |
+| `ENV` | API server | Credentials |
 |---|---|---|
 | `dev` | `https://apiv2-dev.salary-hero.com` | `ADMIN_EMAIL_DEV`, `FIREBASE_API_KEY_DEV`, etc. |
 | `staging` | `https://apiv2-staging.salary-hero.com` | `ADMIN_EMAIL_STAGING`, `FIREBASE_API_KEY_STAGING`, etc. |
 
-You set `ENV` in your `.env` file, or override it per-run on the command line (see section 2).
-
 ---
 
 ## 2. Running Tests
-
-### API tests (most common)
 
 ```bash
 # Run all API tests against dev
@@ -97,27 +93,34 @@ yarn test:api
 # Run all API tests against staging
 yarn test:api:staging
 
-# Override ENV inline without editing .env
-ENV=staging yarn test:api
-```
+# Filter by tag
+yarn test:api --grep @smoke
+yarn test:api --grep @guardian
 
-### View the HTML report
+# Filter by test name
+yarn test:api --grep "Signup Phone"
 
-After a test run, open the visual report:
-
-```bash
+# Open the HTML report after a run
 yarn report
-```
 
-### Type-check the code
-
-Always run this before executing tests to catch errors early:
-
-```bash
+# Type-check before running (always do this first)
 yarn tsc
 ```
 
-If `tsc` shows errors, fix them before running tests. Do not skip this step.
+### Cleaning up leftover test data
+
+If a test run fails mid-way and leaves orphaned records in the database:
+
+```bash
+# Preview what would be deleted (safe — asks confirmation)
+yarn cleanup:dev
+
+# Delete without prompting
+yarn cleanup:dev --force
+
+# Staging (reads _STAGING keys from .env)
+yarn cleanup:staging --force
+```
 
 ---
 
@@ -125,226 +128,337 @@ If `tsc` shows errors, fix them before running tests. Do not skip this step.
 
 ```
 qa-tests/
-├── shared/           # Utilities shared across all test types
-│   ├── utils/
-│   │   ├── env.ts          # All environment variable exports — import from here
-│   │   ├── schema.ts       # validateSchema() for Zod validation
-│   │   ├── request.ts      # get() / post() HTTP helpers
-│   │   └── seed-config.ts  # Reads company/paycycle IDs from fixtures
-│   ├── endpoints.ts        # Every API URL string — add new endpoints here
-│   ├── auth.ts             # loginAsAdmin() helper
-│   ├── api-client.ts       # Generic HTTP client
-│   ├── db.ts               # Database connection pool
-│   └── db-helpers.ts       # Database query functions for test verification
+│
+├── shared/                      # Used by ALL test types (api, ui, etc.)
+│   ├── db.ts                    # DB connection pool — internal, never import directly
+│   ├── db-helpers.ts            # DB query functions: hardDeleteEmployee, getUserById, etc.
+│   ├── employee-api.ts          # Employee CRUD wrappers: createEmployeeViaAPI, buildEmployeePayload, etc.
+│   ├── endpoints.ts             # Every API URL — single source of truth
+│   └── utils/
+│       ├── env.ts               # Env var exports: ENV, ADMIN_EMAIL, FIREBASE_API_KEY, etc.
+│       ├── seed-config.ts       # Per-env config: getCompany(), OTP, PINCODE, getPhonePool()
+│       ├── response.ts          # parseResponse() — API call validation + error logging
+│       ├── schema.ts            # validateSchema() — used in import pipeline only
+│       └── error-messages.ts   # Shared error message constants
 │
 ├── api/
 │   ├── helpers/
-│   │   ├── admin-auth.ts         # Fetch + cache admin token
-│   │   ├── identifiers.ts        # Random test data generators
-│   │   ├── request.ts            # Header constants (DEFAULT_REQUEST_HEADERS, AUTH_HEADERS)
-│   │   ├── seed.ts               # SeedProfile contract + seed/cleanup logic
-│   │   ├── test-setup.ts         # setupSeedTeardown() — wires beforeEach/afterEach
-│   │   └── profiles/             # One SeedProfile per auth method
-│   ├── schema/                   # Zod response schemas
-│   └── tests/                    # Test files — organised by feature
+│   │   ├── admin-console-auth.ts # getAdminToken() — cached admin Bearer token
+│   │   ├── identifiers.ts       # resolvePhone(), generateEmail(), generateEmployeeId(), etc.
+│   │   ├── request.ts           # Header constants: DEFAULT_REQUEST_HEADERS, AUTH_HEADERS()
+│   │   ├── firebase.ts          # firebaseSignIn(), firebaseRefreshToken()
+│   │   ├── line-auth.ts         # getLineAccessToken()
+│   │   ├── employee.ts          # createEmployee(), findEmployeeByIdentifier() — used by seed profiles
+│   │   ├── pin-api.ts            # createPin()
+│   │   ├── profile-api.ts       # getProfile()
+│   │   ├── auth-api.ts          # logout()
+│   │   ├── phone-signup-api.ts  # requestPhoneOtp(), verifyPhoneOtp()
+│   │   ├── line-signup-api.ts   # submitLineToken(), requestLineOtp(), verifyLineOtp()
+│   │   ├── employee-id-signup-api.ts  # lookupEmployee(), requestEmployeeIdOtp(), verifyEmployeeIdOtp()
+│   │   ├── digital-consent-signup-api.ts  # validateScreeningIdentity(), submitConsentRequestForm(), verifyConsentOtp()
+│   │   ├── digital-consent-import.ts  # importDigitalConsentData() — 7-step admin import pipeline
+│   │   ├── seed.ts              # SeedProfile / SeedContext types + seed/cleanup execution
+│   │   ├── test-setup.ts        # setupSeedTeardown() — wires beforeEach/afterEach from a profile
+│   │   └── profiles/            # One SeedProfile per auth method
+│   │       ├── phone.ts         # Phone number signup
+│   │       ├── line.ts          # LINE account signup
+│   │       ├── employee-id.ts   # Employee ID + national ID / passport signup
+│   │       └── entra-id.ts      # Microsoft Entra ID signup (not yet implemented)
+│   ├── schema/
+│   │   ├── signup.schema.ts     # Zod schemas for all signup API responses
+│   │   └── digital-consent.schema.ts  # Zod schemas for consent API responses
+│   ├── fixtures/
+│   │   └── digital-consent-import.xlsx  # Excel fixture for consent import tests
+│   └── tests/
+│       ├── signup/
+│       │   ├── signup-phone.test.ts
+│       │   ├── signup-line.test.ts
+│       │   └── signup-employee-id.test.ts
+│       ├── employees/
+│       │   └── employee.test.ts
+│       └── digital-consent/
+│           └── digital-consent.test.ts
 │
-└── ui/                           # UI tests (separate from API tests)
+├── scripts/
+│   └── cleanup-test-data.ts     # Manual cleanup script for leftover DB records
+│
+├── shared/fixtures/
+│   └── seed-config.json         # QA company IDs, OTP codes, phone pools per environment
+│
+└── docs/
+    └── API_TESTING_GUIDE.md     # This file
 ```
-
-### The `@shared/*` import alias
-
-Instead of writing `../../../shared/utils/env`, you can write:
-
-```typescript
-import { ENV, OTP } from '@shared/utils/env'
-```
-
-The `@shared/*` alias always points to the `shared/` folder at the project root, regardless of where your test file lives.
 
 ---
 
-## 4. Reusable Helpers Overview
+## 4. Where Does Each Thing Go?
 
-### Rule: never read `process.env` directly
+Use this decision tree whenever you are about to create something new.
 
-All environment variables are already exported from `shared/utils/env.ts`. Import them from there:
-
-```typescript
-// ✅ Correct
-import { ENV, OTP, ADMIN_EMAIL } from '@shared/utils/env'
-
-// ❌ Wrong — do not read process.env directly in tests or helpers
-const otp = process.env.OTP
+```
+What are you creating?
+│
+├── A DB query (SELECT / DELETE / INSERT)?
+│     → shared/db-helpers.ts
+│
+├── Config, env var, or company ID?
+│     → shared/utils/env.ts         (credentials, API keys)
+│     → shared/utils/seed-config.ts (company IDs, OTP, phone pool)
+│
+├── An API endpoint URL string?
+│     → shared/endpoints.ts
+│
+├── Test data setup or cleanup logic?
+│     → api/helpers/profiles/{auth-method}.ts   (per-auth-method seed profile)
+│     → api/helpers/seed.ts                     (type definitions + shared logic)
+│
+├── A Zod schema for an API response?
+│     → api/schema/{feature}.schema.ts
+│
+├── A random test data value (phone, email, employee ID)?
+│     → api/helpers/identifiers.ts only
+│
+├── A reusable API call used across 2+ test files?
+│     → api/helpers/{feature}-signup-api.ts   (e.g. phone-signup-api.ts, line-signup-api.ts)
+│
+└── An API call used in only one test file?
+      → inline in the test file
 ```
 
-### `shared/utils/env.ts` — environment variables
+### File responsibilities at a glance
 
-Exports every variable your tests need: `ENV`, `OTP`, `PINCODE`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `FIREBASE_API_KEY`, and LINE credentials.
+| File | Single responsibility |
+|---|---|
+| `shared/db-helpers.ts` | All raw SQL — the only file allowed to import `query()` |
+| `shared/employee-api.ts` | Employee CRUD API wrappers — usable by both API and UI tests |
+| `shared/endpoints.ts` | All URL strings — never hardcode a path in a test or helper |
+| `shared/utils/env.ts` | Credentials and env vars — never read `process.env` anywhere else |
+| `shared/utils/seed-config.ts` | Per-environment config: company IDs, OTP, PINCODE, phone pool |
+| `shared/utils/response.ts` | `parseResponse()` — the one function to validate every API response |
+| `api/helpers/identifiers.ts` | Random identifier generators — the only place these should live |
+| `api/helpers/request.ts` | HTTP header constants: `DEFAULT_REQUEST_HEADERS`, `AUTH_HEADERS()` |
+| `api/helpers/admin-console-auth.ts` | `getAdminToken()` — cached admin token, call this everywhere |
+| `api/helpers/pin-api.ts` | `createPin()` |
+| `api/helpers/profile-api.ts` | `getProfile()` |
+| `api/helpers/auth-api.ts` | `logout()` |
+| `api/helpers/phone-signup-api.ts` | Phone signup API calls |
+| `api/helpers/line-signup-api.ts` | LINE signup API calls |
+| `api/helpers/employee-id-signup-api.ts` | Employee ID signup API calls |
+| `api/helpers/digital-consent-signup-api.ts` | Digital Consent signup API calls |
+| `api/helpers/profiles/` | Seed profiles — one file per auth method |
+| `api/schema/` | Zod response schemas — one file per feature |
 
-### `shared/endpoints.ts` — API URL registry
+---
 
-Every API endpoint string in the project lives here. Never hardcode a URL path in a test file.
+## 5. Reusable Helpers Overview
+
+### OTP and PINCODE — from config, not `.env`
+
+`OTP` and `PINCODE` are read from `seed-config.json` per environment — never from `.env`:
+
+```typescript
+import { OTP, PINCODE } from '@shared/utils/seed-config'
+// dev: OTP = '111111', staging: OTP = '199119'
+```
+
+Using the wrong OTP on staging sends a real SMS to a real person.
+
+### `shared/utils/response.ts` — validate every API response
+
+`parseResponse()` is the standard way to call an API and validate the result. It replaces the old `expect(status).toBe(200)` + manual body parse pattern.
+
+```typescript
+import { parseResponse } from '@shared/utils/response'
+import { OtpRequestSchema } from '../../schema/signup.schema'
+
+const payload = { phone }
+const response = await request.post(endpoints.signup.requestOtp, {
+  data: payload,
+  headers: DEFAULT_REQUEST_HEADERS,
+})
+const parsed = await parseResponse(response, OtpRequestSchema, 'Request OTP', 200, payload)
+// parsed is fully typed — access fields directly
+refCode = parsed.verification_info.ref_code
+```
+
+When a test fails, `parseResponse` logs the full context automatically:
+
+```
+[parseResponse] Request OTP — unexpected status
+  Expected: 200
+  Received: 422
+  URL:      POST https://apiv2-dev.salary-hero.com/api/v2/public/account/signup/phone
+  Payload:  {"phone":"0812345678"}
+  Body:     {"error":"phone_already_registered"}
+```
+
+### `shared/endpoints.ts` — all URL strings
+
+Never write a URL path in a test or helper file:
 
 ```typescript
 import { endpoints } from '@shared/endpoints'
 
-// Use it like this:
 await request.post(endpoints.signup.requestOtp, { ... })
 await request.get(endpoints.signup.getProfile, { ... })
 ```
 
-To add a new endpoint, open `shared/endpoints.ts` and add it to the appropriate group.
+To add a new endpoint, open `shared/endpoints.ts` and add it to the relevant group.
 
-### `api/helpers/request.ts` — HTTP header constants
+### `api/helpers/identifiers.ts` — test data generators
 
-Provides two ready-to-use header objects:
+Always use `resolvePhone()` (not `generatePhone()` directly) — on staging it automatically picks from the approved phone pool:
+
+```typescript
+import { resolvePhone, generateEmail, generateEmployeeId } from '../../helpers/identifiers'
+
+const phone = resolvePhone()           // safe on both dev and staging
+const email = generateEmail()          // qa-signup-{ts}-{rand}@qa.com
+const employeeId = generateEmployeeId() // EMPAPI{ts}{rand}
+```
+
+`EMPAPI` prefix on employee IDs makes leftover test data easy to identify and clean up.
+
+### `api/helpers/request.ts` — HTTP headers
 
 ```typescript
 import { DEFAULT_REQUEST_HEADERS, AUTH_HEADERS } from '../../helpers/request'
 
-// For unauthenticated requests (includes x-app-version)
+// Unauthenticated (no Bearer token)
 headers: DEFAULT_REQUEST_HEADERS
 
-// For authenticated requests (includes x-app-version + Bearer token)
-headers: AUTH_HEADERS(myToken)
+// Authenticated (with Bearer token)
+headers: AUTH_HEADERS(idToken)
 ```
 
-### `api/helpers/identifiers.ts` — random test data generators
+### Feature API helpers — one file per responsibility
 
-Use these to generate unique values for each test run. This prevents collisions when tests run in parallel or repeatedly.
+Each API feature has its own focused helper file:
 
 ```typescript
-import {
-  generatePhone,
-  generateEmployeeId,
-  generateEmail,
-  generateNationalId,
-  generatePassportNo,
-} from '../../helpers/identifiers'
+import { createPin } from '../../helpers/pin-api'
+import { getProfile } from '../../helpers/profile-api'
+import { logout } from '../../helpers/auth-api'
 
-const phone = generatePhone()           // e.g. "0812345678"
-const employeeId = generateEmployeeId() // e.g. "EMP1714020000042"
-const email = generateEmail()           // e.g. "qa-signup-1714020000042-8@qa.com"
+await test.step('Create PIN', async () => {
+  await createPin(request, idTokenPrePin)  // POST /v1/user/account/profile/pincode/create
+})
+
+await test.step('Get Profile', async () => {
+  const body = await getProfile(request, idTokenPostPin)  // GET /v1/user/account/profile
+  expect(body.profile.phone).toBe(phone)
+})
 ```
 
-### `shared/utils/schema.ts` — response validation
+### `api/helpers/admin-console-auth.ts` — admin token
 
-Validates an API response body against a Zod schema and fails the test if it does not match. See [section 6](#6-schema-validation-with-zod) for full details.
+```typescript
+import { getAdminToken } from '../../helpers/admin-console-auth'
 
-### `api/helpers/admin-auth.ts` — admin token
-
-Fetches the admin Bearer token (cached per run). Used internally by seed helpers — you rarely need to call this directly.
+const token = await getAdminToken(request)  // cached — safe to call multiple times
+```
 
 ---
 
-## 5. Writing a Simple API Test
+## 6. Writing a Test
 
-This section walks through writing a minimal API test from scratch.
-
-### The anatomy of a test file
+### Test file anatomy
 
 ```typescript
 import { test, expect } from '@playwright/test'
 
-test.describe('Feature name', () => {
+test.describe('Feature Name', () => {
 
-  test('should do something', async ({ request }) => {
+  test(
+    'API – Feature – Scenario – Expected Result',
+    { tag: ['@component', '@high', '@regression', '@shared'] },
+    async ({ request }) => {
 
-    await test.step('Step description', async () => {
-      // make an API call and assert the result
-    })
+      await test.step('Step description', async () => {
+        // make an API call and assert the result
+      })
 
-  })
+    }
+  )
 
 })
 ```
 
-- `test.describe` groups related tests together.
-- `test` is a single test case. The `request` argument is Playwright's built-in API client.
-- `test.step` labels a logical part of the test — this appears in the report and helps with debugging.
-
-### Making a POST request
-
-```typescript
-const response = await request.post(endpoints.signup.requestOtp, {
-  data: { phone: '0812345678' },
-  headers: DEFAULT_REQUEST_HEADERS,
-})
-```
-
-- `data` is the JSON request body.
-- `headers` are HTTP headers. Use `DEFAULT_REQUEST_HEADERS` for unauthenticated requests, or `AUTH_HEADERS(token)` when a Bearer token is required.
-
-### Making a GET request
-
-```typescript
-const response = await request.get(endpoints.signup.getProfile, {
-  headers: AUTH_HEADERS(idToken),
-})
-```
-
-### Asserting the response
-
-```typescript
-// Check the HTTP status code
-expect(response.status()).toBe(200)
-
-// Read the JSON body
-const body = await response.json()
-
-// Assert specific fields
-expect(body.is_signup).toBe(false)
-expect(body.next_state).toBe('signup.phone.verify')
-```
+Every logical action must be wrapped in `test.step()`. The step label appears in the HTML report and makes failures easier to diagnose.
 
 ### A complete minimal example
-
-This test calls a single endpoint and asserts the response — no database setup required.
 
 ```typescript
 import { test, expect } from '@playwright/test'
 import { endpoints } from '@shared/endpoints'
+import { parseResponse } from '@shared/utils/response'
+import { OtpRequestSchema } from '../../schema/signup.schema'
 import { DEFAULT_REQUEST_HEADERS } from '../../helpers/request'
-import { generatePhone } from '../../helpers/identifiers'
+import { resolvePhone } from '../../helpers/identifiers'
 
-test.describe('OTP request', () => {
+test.describe('Signup by Phone', () => {
 
-  test('should return 200 and a ref_code for a valid phone number', async ({ request }) => {
-    const phone = generatePhone()
+  test(
+    'API – Signup Phone – Request OTP – Success',
+    { tag: ['@component', '@high', '@smoke', '@regression', '@guardian'] },
+    async ({ request }) => {
+      const phone = resolvePhone()
 
-    await test.step('Request OTP', async () => {
-      const response = await request.post(endpoints.signup.requestOtp, {
-        data: { phone },
-        headers: DEFAULT_REQUEST_HEADERS,
+      await test.step('Request OTP', async () => {
+        const payload = { phone }
+        const response = await request.post(endpoints.signup.requestOtp, {
+          data: payload,
+          headers: DEFAULT_REQUEST_HEADERS,
+        })
+        const parsed = await parseResponse(response, OtpRequestSchema, 'Request OTP', 200, payload)
+        expect(parsed.is_signup).toBe(false)
+        expect(parsed.next_state).toBe('signup.phone.verify')
       })
-
-      expect(response.status()).toBe(200)
-
-      const body = await response.json()
-      expect(body.next_state).toBe('signup.phone.verify')
-      expect(body.verification_info.ref_code).toBeTruthy()
-    })
-  })
+    }
+  )
 
 })
 ```
 
+### Adding lifecycle hooks (setup and teardown)
+
+For tests that need an employee record seeded before they run, use `setupSeedTeardown`:
+
+```typescript
+import { setupSeedTeardown } from '../../helpers/test-setup'
+import { phoneSignupProfile } from '../../helpers/profiles/phone'
+
+test.describe('Signup by Phone', () => {
+  const { beforeEach, afterEach, getContext } = setupSeedTeardown(phoneSignupProfile)
+  test.beforeEach(beforeEach)
+  test.afterEach(afterEach)
+
+  test('API – Signup Phone – Full signup flow – Success', ..., async ({ request }) => {
+    const ctx = getContext()
+    const phone = ctx.identifiers.phone!  // the seeded phone number
+  })
+})
+```
+
+`afterEach` automatically calls `hardDeleteEmployee()` — a full hard delete that removes the employee and all related records so the phone number and bank account can be reused in the next run.
+
 ---
 
-## 6. Schema Validation with Zod
+## 7. Schema Validation with Zod
 
 ### What problem does it solve?
 
-`expect(response.status()).toBe(200)` only checks the HTTP status. It does not verify that the response body has the correct shape — the right fields, types, and structure. Zod schemas do this.
+A 200 status code only means the server responded. It does not verify the response body has the right shape. Zod schemas catch:
+- Missing fields
+- Wrong field types (`string` returned where `number` expected)
+- API contract changes
 
-### What is a Zod schema?
-
-A Zod schema describes the expected shape of an object. Example:
+### Defining a schema
 
 ```typescript
 import { z } from 'zod'
 
-const OtpRequestSchema = z.object({
+export const OtpRequestSchema = z.object({
   is_signup: z.boolean(),
   next_state: z.string(),
   verification_info: z.object({
@@ -353,155 +467,165 @@ const OtpRequestSchema = z.object({
 })
 ```
 
-### How to use `validateSchema`
+Schemas live in `api/schema/{feature}.schema.ts`. Add new schemas to the relevant file, or create a new file for a new feature area.
+
+### Validating a response with `parseResponse()`
 
 ```typescript
-import { validateSchema } from '@shared/utils/schema'
-import { OtpRequestSchema } from '../../schema/signup.schema'
-
-const body = await response.json()
-validateSchema(body, OtpRequestSchema, 'OTP request')
+const parsed = await parseResponse(response, OtpRequestSchema, 'Request OTP', 200, payload)
+// parsed is typed as z.infer<typeof OtpRequestSchema>
 ```
 
-- The third argument is a label used in the failure message so you know which validation failed.
-- If the body does not match the schema, the test fails immediately with a clear error.
+`parseResponse` handles all three failure modes:
+1. Wrong HTTP status → logs status + URL + payload + body, then throws
+2. Non-JSON response → logs URL + payload + raw text, then throws
+3. Schema mismatch → logs body + Zod validation errors, then throws
 
-### Where to put schemas
+### Optional fields in shared schemas
 
-All schemas live in `api/schema/`. Each file groups schemas for one feature area:
-
-```
-api/schema/
-├── signup.schema.ts           # Schemas for all signup endpoints
-└── digital-consent.schema.ts  # Schemas for consent endpoints
-```
-
-Add new schemas to the relevant file, or create a new file if the feature is distinct.
-
-### Using schema validation together with field assertions
+The `GetProfileSchema` is shared across all signup flows. Feature-specific optional fields use `.optional()`:
 
 ```typescript
-const body = await response.json()
-
-// 1. Validate the overall shape first
-validateSchema(body, OtpRequestSchema, 'OTP request')
-
-// 2. Then assert specific field values
-expect(body.is_signup).toBe(false)
-expect(body.next_state).toBe('signup.phone.verify')
-```
-
-Do both. Schema validation catches structural problems; field assertions verify business logic.
-
----
-
-## 7. Seed & Teardown Pattern
-
-### Why tests need setup
-
-Most API tests require an employee record to exist in the database before the test runs — for example, a signup test needs an employee with a matching phone number to sign up against. Creating this data before a test, and cleaning it up after, is called **seeding and teardown**.
-
-### The problem with manual setup
-
-Writing `beforeEach` and `afterEach` manually in every test file is repetitive and error-prone. This project solves that with `SeedProfile` and `setupSeedTeardown`.
-
-### What is a `SeedProfile`?
-
-A `SeedProfile` is a configuration object that describes everything needed to set up and tear down test data for one auth method. It defines:
-
-- What identifiers to use (phone, employee ID, etc.)
-- Which company to seed into
-- How to create the employee record
-- How to clean up after the test
-
-Profiles live in `api/helpers/profiles/`. There is one profile per auth method:
-
-| File | Auth method |
-|---|---|
-| `profiles/phone.ts` | Phone number signup |
-| `profiles/line.ts` | LINE account signup |
-| `profiles/employee-id.ts` | Employee ID signup |
-
-### How to use `setupSeedTeardown`
-
-```typescript
-import { test } from '@playwright/test'
-import { phoneSignupProfile } from '../../helpers/profiles/phone'
-import { setupSeedTeardown } from '../../helpers/test-setup'
-
-test.describe('Signup by Phone', () => {
-  // 1. Create the hooks by passing in a profile
-  const { beforeEach, afterEach, getContext } = setupSeedTeardown(phoneSignupProfile)
-
-  // 2. Register them with Playwright
-  test.beforeEach(beforeEach)
-  test.afterEach(afterEach)
-
-  test('should complete signup', async ({ request }) => {
-    // 3. Access the seeded data inside the test
-    const ctx = getContext()
-    const phone = ctx.identifiers.phone   // the phone number that was seeded
-    const userId = ctx.employee.user_id   // the employee's user ID in the database
-
-    // ... rest of the test
-  })
+export const GetProfileSchema = z.object({
+  profile: z.object({
+    phone: z.string().optional(),
+    line_id: z.string().nullable().optional(),
+    employee_id: z.string().optional(),
+    has_pincode: z.boolean(),
+    signup_at: z.string().nullable(),
+  }),
+  // Present only for digital consent users — use this instead of is_consent_accepted (deprecated)
+  employee_profile: z.object({
+    consent_status: z.string().optional(),
+  }).optional(),
 })
 ```
 
-### What `setupSeedTeardown` does for you
-
-| Hook | What it does |
-|---|---|
-| `beforeEach` | Runs forced cleanup (in case of leftover state), then creates the employee record |
-| `afterEach` | Deletes the employee record and clears any state created during the test |
-
-You do not need to write any cleanup code inside the test itself.
-
-### `SeedContext` — what `getContext()` returns
-
-```typescript
-type SeedContext = {
-  company: {
-    company_id: number
-    paycycle_id: number
-  }
-  employee: {
-    user_id: string       // the created employee's ID
-    identifiers: { ... }
-  }
-  identifiers: {
-    phone?: string
-    employee_id?: string
-    email?: string
-    national_id?: string
-    passport_no?: string
-    line_id?: string
-  }
-}
-```
-
-### Serial vs parallel tests
-
-Most profiles are parallel-safe — each test generates a unique phone number or employee ID so tests do not interfere with each other.
-
-The LINE signup profile uses a fixed real LINE account, so those tests **must run serially**. Add this at the top of the describe block:
-
-```typescript
-test.describe.configure({ mode: 'serial' })
-```
-
-If your profile's `identifierStrategy` is `'fixed'`, you must use serial mode.
+Every field you `expect()` in a test must be declared in the schema.
 
 ---
 
-## 8. Checklist Before Writing a New Test
+## 8. Seed & Teardown Pattern
+
+### Why tests need setup
+
+Signup tests require an employee record to exist before the test runs — the employee's phone number or employee ID must match what the test sends to the API. Creating and cleaning up this data is handled by the seed profile system.
+
+### How it works
+
+```typescript
+import { setupSeedTeardown } from '../../helpers/test-setup'
+import { phoneSignupProfile } from '../../helpers/profiles/phone'
+
+const { beforeEach, afterEach, getContext } = setupSeedTeardown(phoneSignupProfile)
+test.beforeEach(beforeEach)
+test.afterEach(afterEach)
+```
+
+| Hook | What it does |
+|---|---|
+| `beforeEach` | Cleans up any leftover state from failed runs, then creates a fresh employee record |
+| `afterEach` | Calls `hardDeleteEmployee()` — removes the user and all related DB rows |
+
+### Accessing seeded data in the test
+
+```typescript
+const ctx = getContext()
+const phone = ctx.identifiers.phone!      // the seeded phone number
+const employeeId = ctx.identifiers.employee_id   // the seeded employee_id
+const company = ctx.company               // { id, name, qa_paycycle_id }
+```
+
+### Available profiles
+
+| File | Auth method | Parallelism |
+|---|---|---|
+| `profiles/phone.ts` | Phone number + OTP | Parallel-safe |
+| `profiles/line.ts` | LINE account | Must be serial (fixed LINE account) |
+| `profiles/employee-id.ts` | Employee ID + national ID or passport | Parallel-safe |
+
+### Staging phone numbers
+
+On staging, real OTPs are sent to real phones. Only numbers `0881001500`–`0881001600` are approved for testing. `resolvePhone()` handles this automatically — it picks from the approved pool on staging and generates a random number on dev.
+
+### Why `hardDeleteEmployee` instead of the API delete
+
+The admin API `DELETE /v1/admin/account/employee/:userId` is a soft delete — it sets `deleted_at` but leaves the records in place. Soft-deleted phone numbers and bank account numbers still block reuse within the same paycycle.
+
+`hardDeleteEmployee()` in `shared/db-helpers.ts` performs a full FK-safe delete in the correct order:
+
+```
+employee_profile_audit → employee_profile → employment
+→ user_identity → user_balance → user_bank → user_provider → users
+```
+
+---
+
+## 9. Test Naming Convention
+
+Every test must follow this format:
+
+```
+[Type] – [Feature] – [Scenario] – [Expected Result]
+```
+
+**Examples:**
+
+```
+API – Signup Phone – Full signup flow – Success
+API – Employee – Create employee – Success
+API – Digital Consent – Import employee records – consent_status = new
+API – Signup Employee ID – Full signup flow with passport number – Success
+```
+
+### Mandatory tags
+
+Every test must include 4 tags:
+
+```typescript
+test(
+  'API – Signup Phone – Full signup flow – Success',
+  { tag: ['@component', '@high', '@smoke', '@regression', '@guardian'] },
+  async ({ request }) => { ... }
+)
+```
+
+| Tag | Values | Meaning |
+|---|---|---|
+| Type | `@component` / `@workflow` | Component = single API/feature. Workflow = cross-feature flow. |
+| Priority | `@high` / `@medium` / `@low` | How critical is this test |
+| Execution | `@smoke` / `@regression` | Smoke = fast CI gate. Regression = full suite. |
+| Squad | `@guardian` / `@avengers` / `@shared` | Who owns this test |
+
+### Squad ownership
+
+| Squad | Covers |
+|---|---|
+| `@guardian` | Authentication (all signup flows) + Digital Consent |
+| `@avengers` | Withdrawal / EWA features |
+| `@shared` | Shared features: employees, companies, etc. |
+
+### Running by tag
+
+```bash
+yarn test:api --grep @smoke       # smoke tests only
+yarn test:api --grep @guardian    # guardian squad tests
+yarn test:api --grep @regression  # full regression suite
+```
+
+---
+
+## 10. Checklist Before Writing a New Test
 
 Before writing any code, go through this checklist:
 
-- [ ] **Endpoints**: Add all new API URL paths to `shared/endpoints.ts`. Never write a URL string directly in a test file.
-- [ ] **Env variables**: If a new credential is needed, add it to `.env.example` (without the value), then read it via `shared/utils/env.ts`. Never call `process.env` directly in test files.
-- [ ] **Schema**: Define a Zod schema for each new response shape in `api/schema/`. Use `validateSchema()` in every test step that reads a response body.
-- [ ] **Identifiers**: Use generators from `api/helpers/identifiers.ts` for any value that must be unique per run. Never hardcode test data like phone numbers or emails.
-- [ ] **Seed config**: If the test needs company or paycycle IDs, look them up via `getCompany()` from `shared/utils/seed-config.ts`. The values come from `shared/fixtures/seed-config.json` — not from `.env`.
-- [ ] **Type-check**: Run `yarn tsc` before running tests. Fix all errors before proceeding.
-- [ ] **Run the test**: Run `yarn test:api` and confirm it passes. Check `yarn report` for details if it fails.
+- [ ] **Endpoint** — Add the URL to `shared/endpoints.ts`. Never hardcode a path in a test or helper.
+- [ ] **Schema** — Define a Zod schema for each new response shape in `api/schema/{feature}.schema.ts`. Every field you assert must be declared in the schema.
+- [ ] **Identifier** — Use `resolvePhone()`, `generateEmail()`, or `generateEmployeeId()` from `api/helpers/identifiers.ts`. Never hardcode test data.
+- [ ] **Config** — If the test needs a company ID or paycycle ID, use `getCompany('name')` from `shared/utils/seed-config.ts`. Never hardcode numeric IDs.
+- [ ] **Env vars** — If a new credential is needed, add it to `.env.example`, then export it from `shared/utils/env.ts`. Never read `process.env` directly.
+- [ ] **Helper placement** — If the same API call appears in 2+ test files, extract it to `api/helpers/{feature}-flow.ts`. See [section 4](#4-where-does-each-thing-go) for the full decision tree.
+- [ ] **Test name** — Follow the `[Type] – [Feature] – [Scenario] – [Expected Result]` convention with all 4 mandatory tags.
+- [ ] **Type-check** — Run `yarn tsc` before running tests. Fix all errors before proceeding.
+- [ ] **Run the test** — Run `yarn test:api` and confirm it passes. Check `yarn report` for details if it fails.
+- [ ] **Cleanup** — If the test leaves data behind after a failed run, `yarn cleanup:dev --force` removes it.

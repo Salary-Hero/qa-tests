@@ -29,7 +29,7 @@ import {
  * ```
  */
 export function setupSeedTeardown(profile: SeedProfile) {
-  let ctx: SeedContext
+  let ctx: SeedContext | undefined
 
   return {
     beforeEach: async ({ request }: { request: APIRequestContext }) => {
@@ -42,14 +42,22 @@ export function setupSeedTeardown(profile: SeedProfile) {
       await test.step('Cleanup test data', async () => {
         if (ctx) {
           await cleanupFromProfile(request, profile, ctx)
+          ctx = undefined
         }
       })
     },
 
     /**
      * Returns the current seed context.
-     * Call this in test functions after setup completes.
+     * Must be called inside a test() body after beforeEach has run.
      */
-    getContext: (): SeedContext => ctx,
+    getContext: (): SeedContext => {
+      if (!ctx) {
+        throw new Error(
+          'getContext() called before beforeEach completed — ensure test.beforeEach(beforeEach) is registered'
+        )
+      }
+      return ctx
+    },
   }
 }

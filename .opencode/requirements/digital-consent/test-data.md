@@ -8,10 +8,10 @@
 
 | Employee ID | National ID | Passport No | Used In |
 |-------------|-------------|-------------|---------|
-| TS01900 | 2001000099000 | TSPP1900 | TC-CONSENT-002 (national_id signup) |
-| TS01901 | 2001000099001 | TSPP1901 | TC-CONSENT-003 (passport_no signup) |
-| TS01902 | 2001000099002 | TSPP1902 | TC-CONSENT-004 (state check — no signup) |
-| TS01903 | 2001000099003 | TSPP1903 | TC-CONSENT-004 (state check — no signup) |
+| EMPAPI-CONSENT-001 | 2001000099000 | TSPP1900 | TC-CONSENT-002 (national_id signup) |
+| EMPAPI-CONSENT-002 | 2001000099001 | TSPP1901 | TC-CONSENT-003 (passport_no signup) |
+| EMPAPI-CONSENT-003 | 2001000099002 | TSPP1902 | TC-CONSENT-004 (state check — no signup) |
+| EMPAPI-CONSENT-004 | 2001000099003 | TSPP1903 | TC-CONSENT-004 (state check — no signup) |
 
 **Column header requirements:**
 - Must be exactly: `Employee ID`, `National ID`, `Passport No`
@@ -47,8 +47,8 @@ Two identity types are tested, one per signup test:
 
 | Test | `personal_id_type` | `personal_id` value | Employee |
 |------|-------------------|---------------------|---------|
-| TC-CONSENT-002 | `"national_id"` | `"2001000099000"` | TS01900 |
-| TC-CONSENT-003 | `"passport_no"` | `"TSPP1901"` | TS01901 |
+| TC-CONSENT-002 | `"national_id"` | `"2001000099000"` | EMPAPI-CONSENT-001 |
+| TC-CONSENT-003 | `"passport_no"` | `"TSPP1901"` | EMPAPI-CONSENT-002 |
 
 `personal_id_type` is sent in both Step 8 (screening validate) and Step 9 (request form).
 
@@ -65,7 +65,7 @@ Two identity types are tested, one per signup test:
 ```
 beforeAll:
   1. DELETE FROM employee_profile
-     WHERE employee_id IN ('TS01900','TS01901','TS01902','TS01903')
+     WHERE employee_id IN ('EMPAPI-CONSENT-001','EMPAPI-CONSENT-002','EMPAPI-CONSENT-003','EMPAPI-CONSENT-004')
        AND company_id = 514
         ↓
   2. Run 7-step import with digital-consent-import.xlsx
@@ -75,26 +75,26 @@ beforeAll:
 TC-CONSENT-001:
   4. DB query verifies all 4 rows exist with consent_status = 'new'
 
-TC-CONSENT-002 (TS01900 — national_id):
+TC-CONSENT-002 (EMPAPI-CONSENT-001 — national_id):
   5. Generate fresh phone + email
   6. Run signup steps 8–15
-  7. DB verify: consent_status = 'pending_review' for TS01900
+  7. DB verify: consent_status = 'pending_review' for EMPAPI-CONSENT-001
   afterEach:
   8. DELETE /v1/admin/account/employee/{user_id}  (cascades to users table)
 
-TC-CONSENT-003 (TS01901 — passport_no):
+TC-CONSENT-003 (EMPAPI-CONSENT-002 — passport_no):
   9. Generate fresh phone + email
   10. Run signup steps 8–15
-  11. DB verify: consent_status = 'pending_review' for TS01901
+  11. DB verify: consent_status = 'pending_review' for EMPAPI-CONSENT-002
   afterEach:
   12. DELETE /v1/admin/account/employee/{user_id}
 
-TC-CONSENT-004 (TS01902, TS01903):
+TC-CONSENT-004 (EMPAPI-CONSENT-003, EMPAPI-CONSENT-004):
   13. DB query only — no API calls, no data created
 
 afterAll:
   14. DELETE FROM employee_profile
-      WHERE employee_id IN ('TS01900','TS01901','TS01902','TS01903')
+      WHERE employee_id IN ('EMPAPI-CONSENT-001','EMPAPI-CONSENT-002','EMPAPI-CONSENT-003','EMPAPI-CONSENT-004')
         AND company_id = 514
 ```
 

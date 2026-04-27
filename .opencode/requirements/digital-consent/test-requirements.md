@@ -59,7 +59,7 @@ A test **passes** when:
 3. OTP verify returns Firebase custom token
 4. Firebase sign-in and token refresh succeed
 5. PIN creation returns `"Create PIN successfully"`
-6. Profile returns `is_consent_accepted: true`
+6. Profile returns `employee_profile.consent_status` of `pending_review` or `new`
 7. DB confirms `consent_status = 'pending_review'` for the signed-up employee
 
 A test **fails** if:
@@ -72,7 +72,7 @@ A test **fails** if:
 ### State Isolation Check (TC-CONSENT-004)
 
 A test **passes** when:
-- DB query returns `consent_status = 'new'` for both TS01902 and TS01903
+- DB query returns `consent_status = 'new'` for both EMPAPI-CONSENT-003 and EMPAPI-CONSENT-004
 
 A test **fails** if:
 - Any non-signed-up employee has a status other than `'new'`

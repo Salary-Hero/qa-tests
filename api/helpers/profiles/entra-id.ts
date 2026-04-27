@@ -1,9 +1,10 @@
-import { deleteEmployee, findEmployeeByIdentifier } from '../employee'
+import { findEmployeeByIdentifier } from '../employee'
 import { CleanupStep, SeedProfile } from '../seed'
 import {
   getCompany,
   getFixedIdentifier,
 } from '../../../shared/utils/seed-config'
+import { hardDeleteEmployee } from '../../../shared/db-helpers'
 
 /**
  * TODO: Implement Microsoft Entra ID signup profile.
@@ -29,7 +30,7 @@ const cleanupEmployee: CleanupStep = async (request, ctx) => {
   }
 
   if (userId) {
-    await deleteEmployee(request, userId)
+    await hardDeleteEmployee(userId)
   }
 }
 

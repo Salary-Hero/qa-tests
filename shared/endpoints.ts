@@ -3,6 +3,8 @@ export const endpoints = {
     login: '/api/v1/public/account/admin/login',
     createEmployee: (companyId: number) =>
       `/api/v1/admin/account/employee/${companyId}`,
+    updateEmployee: (companyId: number, userId: number) =>
+      `/api/v1/admin/account/employee/${companyId}/${userId}`,
     deleteEmployee: (userId: string) =>
       `/api/v1/admin/account/employee/${userId}`,
     searchEmployee: '/api/v2/admin/account/employee',

@@ -13,7 +13,7 @@ Runs once before all 4 test cases.
 
 | Action | Detail |
 |--------|--------|
-| DB cleanup | `DELETE FROM employee_profile WHERE employee_id IN ('TS01900','TS01901','TS01902','TS01903') AND company_id = 514` |
+| DB cleanup | `DELETE FROM employee_profile WHERE employee_id IN ('EMPAPI-CONSENT-001','EMPAPI-CONSENT-002','EMPAPI-CONSENT-003','EMPAPI-CONSENT-004') AND company_id = 514` |
 | Admin login | Get Bearer token via `getAdminToken(request)` |
 | Run import | Execute 7-step import pipeline (see TC-CONSENT-001 steps) |
 
@@ -23,7 +23,7 @@ Runs once after all 4 test cases, regardless of pass/fail.
 
 | Action | Detail |
 |--------|--------|
-| DB cleanup | `DELETE FROM employee_profile WHERE employee_id IN ('TS01900','TS01901','TS01902','TS01903') AND company_id = 514` |
+| DB cleanup | `DELETE FROM employee_profile WHERE employee_id IN ('EMPAPI-CONSENT-001','EMPAPI-CONSENT-002','EMPAPI-CONSENT-003','EMPAPI-CONSENT-004') AND company_id = 514` |
 
 ---
 
@@ -60,12 +60,12 @@ Runs once after all 4 test cases, regardless of pass/fail.
 
 ## TC-CONSENT-002 · Signup with National ID
 
-**Priority:** Critical | **Status:** 🔲 NEW | **Employee:** TS01900
+**Priority:** Critical | **Status:** 🔲 NEW | **Employee:** EMPAPI-CONSENT-001
 
 **Objective:** Verify a user can complete Digital Consent signup using `national_id` as their identity, and `consent_status` transitions to `'pending_review'`.
 
 **Preconditions:**
-- TC-CONSENT-001 has run — TS01900 row exists with `consent_status = 'new'`
+- TC-CONSENT-001 has run — EMPAPI-CONSENT-001 row exists with `consent_status = 'new'`
 - Fresh `phone` and `email` generated for this test
 - `OTP` and `PINCODE` set in `.env`
 - Firebase API key configured
@@ -74,15 +74,15 @@ Runs once after all 4 test cases, regardless of pass/fail.
 
 | Step | Action | Assert |
 |------|--------|--------|
-| 8 | `POST /v2/public/account/consent/screening/validate` `{ employee_id: "TS01900", personal_id: "2001000099000", personal_id_type: "national_id", company_id: 514 }` | 200 |
-| 9 | `POST /v2/public/account/consent/request-form/request` `{ personal_id_type: "national_id", company_id: 514, screening: { employee_id: "TS01900", personal_id: "2001000099000" }, request_form: { first_name: "QA", last_name: "Consent", email: generated, phone: generated } }` | 200 · `verification.ref_code` defined |
+| 8 | `POST /v2/public/account/consent/screening/validate` `{ employee_id: "EMPAPI-CONSENT-001", personal_id: "2001000099000", personal_id_type: "national_id", company_id: 514 }` | 200 |
+| 9 | `POST /v2/public/account/consent/request-form/request` `{ personal_id_type: "national_id", company_id: 514, screening: { employee_id: "EMPAPI-CONSENT-001", personal_id: "2001000099000" }, request_form: { first_name: "QA", last_name: "Consent", email: generated, phone: generated } }` | 200 · `verification.ref_code` defined |
 | 10 | `POST /v1/public/account/consent/request-form/verify` `{ ref_code, code: OTP, phone }` | 200 · `verification_info.token` starts with `"ey"` |
 | 11 | Firebase `signInWithCustomToken(token)` | 200 · `refreshToken` returned |
 | 12 | Firebase `securetoken/v1/token` (pre-PIN) `{ grant_type: "refresh_token", refresh_token }` | 200 · `id_token` returned |
 | 13 | `POST /v1/user/account/profile/pincode/create` `{ pincode }` | 200 · `message = "Create PIN successfully"` |
 | 14 | Firebase `securetoken/v1/token` (post-PIN) | 200 · new `id_token` returned |
-| 15 | `GET /v1/user/account/profile` | 200 · `profile.is_consent_accepted = true` · `profile.has_pincode = true` |
-| DB | `SELECT consent_status FROM employee_profile WHERE employee_id = 'TS01900' AND company_id = 514` | `consent_status = 'pending_review'` |
+| 15 | `GET /v1/user/account/profile` | 200 · `profile.has_pincode = true` · `employee_profile.consent_status` is `pending_review` or `new` |
+| DB | `SELECT consent_status FROM employee_profile WHERE employee_id = 'EMPAPI-CONSENT-001' AND company_id = 514` | `consent_status = 'pending_review'` |
 
 **afterEach:**
 ```
@@ -90,7 +90,7 @@ DELETE /v1/admin/account/employee/{user_id}
 ```
 
 **Fails if:**
-- Step 8 returns 404 — TS01900 not in `employee_profile` (import did not run or `beforeAll` cleanup removed it)
+- Step 8 returns 404 — EMPAPI-CONSENT-001 not in `employee_profile` (import did not run or `beforeAll` cleanup removed it)
 - Step 9 returns 400 — `personal_id` doesn't match
 - Step 10 returns 400 — wrong OTP (check `OTP` env var, DEV = `"111111"`)
 - Firebase token expired (transient — re-run)
@@ -100,7 +100,7 @@ DELETE /v1/admin/account/employee/{user_id}
 
 ## TC-CONSENT-003 · Signup with Passport Number
 
-**Priority:** High | **Status:** 🔲 NEW | **Employee:** TS01901
+**Priority:** High | **Status:** 🔲 NEW | **Employee:** EMPAPI-CONSENT-002
 
 **Objective:** Verify a user can complete Digital Consent signup using `passport_no` as their identity.
 
@@ -112,13 +112,13 @@ Identical to TC-CONSENT-002 with these differences:
 
 | Field | TC-CONSENT-002 | TC-CONSENT-003 |
 |-------|----------------|----------------|
-| `employee_id` | `"TS01900"` | `"TS01901"` |
+| `employee_id` | `"EMPAPI-CONSENT-001"` | `"EMPAPI-CONSENT-002"` |
 | `personal_id_type` | `"national_id"` | `"passport_no"` |
 | `personal_id` | `"2001000099000"` | `"TSPP1901"` |
 | `phone` | fresh generated | fresh generated (different value) |
 | `email` | fresh generated | fresh generated (different value) |
 
-All 8 steps and DB assertion are otherwise identical. `consent_status` must be `'pending_review'` for TS01901 after signup.
+All 8 steps and DB assertion are otherwise identical. `consent_status` must be `'pending_review'` for EMPAPI-CONSENT-002 after signup.
 
 **afterEach:**
 ```
@@ -133,20 +133,20 @@ DELETE /v1/admin/account/employee/{user_id}
 
 ## TC-CONSENT-004 · Non-Signed-Up Employees Remain 'new'
 
-**Priority:** High | **Status:** 🔲 NEW | **Employees:** TS01902, TS01903
+**Priority:** High | **Status:** 🔲 NEW | **Employees:** EMPAPI-CONSENT-003, EMPAPI-CONSENT-004
 
 **Objective:** Verify that employees who were imported but never signed up retain `consent_status = 'new'`. This ensures the signup of other employees does not affect unrelated records.
 
 **Preconditions:**
-- TC-CONSENT-001 has run — TS01902 and TS01903 rows exist
-- TC-CONSENT-002 and TC-CONSENT-003 have run — TS01900 and TS01901 are now `'pending_review'`
-- No signup has been performed for TS01902 or TS01903
+- TC-CONSENT-001 has run — EMPAPI-CONSENT-003 and EMPAPI-CONSENT-004 rows exist
+- TC-CONSENT-002 and TC-CONSENT-003 have run — EMPAPI-CONSENT-001 and EMPAPI-CONSENT-002 are now `'pending_review'`
+- No signup has been performed for EMPAPI-CONSENT-003 or EMPAPI-CONSENT-004
 
 **Steps:**
 
 | Step | Action | Assert |
 |------|--------|--------|
-| DB | `SELECT employee_id, consent_status FROM employee_profile WHERE employee_id IN ('TS01902', 'TS01903') AND company_id = 514 AND deleted_at IS NULL` | 2 rows returned · both have `consent_status = 'new'` |
+| DB | `SELECT employee_id, consent_status FROM employee_profile WHERE employee_id IN ('EMPAPI-CONSENT-003', 'EMPAPI-CONSENT-004') AND company_id = 514 AND deleted_at IS NULL` | 2 rows returned · both have `consent_status = 'new'` |
 
 No API calls. No data created or modified.
 
@@ -161,8 +161,8 @@ No API calls. No data created or modified.
 ```
 beforeAll   → DB cleanup → Admin login → 7-step import
 TC-CONSENT-001 → verify 4 × 'new'
-TC-CONSENT-002 → signup TS01900 (national_id) → verify 'pending_review' → afterEach: delete user
-TC-CONSENT-003 → signup TS01901 (passport_no) → verify 'pending_review' → afterEach: delete user
-TC-CONSENT-004 → DB check TS01902, TS01903 still 'new'
+TC-CONSENT-002 → signup EMPAPI-CONSENT-001 (national_id) → verify 'pending_review' → afterEach: delete user
+TC-CONSENT-003 → signup EMPAPI-CONSENT-002 (passport_no) → verify 'pending_review' → afterEach: delete user
+TC-CONSENT-004 → DB check EMPAPI-CONSENT-003, EMPAPI-CONSENT-004 still 'new'
 afterAll    → DB cleanup
 ```

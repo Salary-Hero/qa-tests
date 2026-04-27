@@ -5,7 +5,7 @@
  * Test files must import named functions from here — never import query() directly.
  */
 
-import { query } from './db'
+import { query, getClient } from './db'
 
 // ---------------------------------------------------------------------------
 // Digital Consent helpers
@@ -98,8 +98,134 @@ export async function getEmployeeConsentStatus(
 // Employee / User helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Hard-deletes a user and all associated records from the database.
+ *
+ * The admin API soft-delete (DELETE /v1/admin/account/employee/:userId) sets
+ * deleted_at but leaves the records in place. Soft-deleted phone numbers and
+ * bank account numbers are still subject to the paycycle uniqueness constraint,
+ * causing "already used in this paycycle" errors on subsequent test runs.
+ *
+ * FK dependency order (confirmed from DB schema):
+ *
+ *   user_balance
+ *     ↑ fk_user_identity_balance  (user_identity.balance_uid → user_balance.balance_uid)
+ *   user_identity
+ *     ↑ fk_employment_user_identity  (employment.user_uid → user_identity.user_uid)
+ *   employment
+ *     ↑ employment_employee_profile_fk  (employee_profile.employment_id → employment.employment_id)
+ *   employee_profile
+ *     ↑ employee_profile_employee_profile_audit_fk  (employee_profile_audit → employee_profile)
+ *   employee_profile_audit
+ *
+ * Safe delete order:
+ *   1. Read user_uid + balance_uid from user_identity before any deletes
+ *   2. employee_profile_audit
+ *   3. employee_profile
+ *   4. employment  (references user_identity.user_uid)
+ *   5. user_identity  (references user_balance.balance_uid)
+ *   6. user_balance
+ *   7. user_bank
+ *   8. user_provider  (no FK to users — must delete explicitly, not cascaded)
+ *   9. users
+ *
+ * All statements run inside a single transaction — partial cleanup is never
+ * left behind if one statement fails.
+ */
+export async function hardDeleteEmployee(userId: string): Promise<void> {
+  if (!userId) return
+
+  const numericId = parseInt(userId, 10)
+  if (isNaN(numericId) || numericId <= 0) {
+    throw new Error(`hardDeleteEmployee: invalid userId "${userId}"`)
+  }
+
+  const client = await getClient()
+  try {
+    await client.query('BEGIN')
+
+    // Read UUIDs needed for downstream deletes before any rows are removed
+    const identityResult = await client.query<{ user_uid: string; balance_uid: string | null }>(
+      `SELECT user_uid, balance_uid FROM user_identity WHERE legacy_user_id = $1::bigint`,
+      [numericId]
+    )
+    const userUid = identityResult.rows[0]?.user_uid ?? null
+    const balanceUid = identityResult.rows[0]?.balance_uid ?? null
+
+    // employee_profile_audit — FK → employee_profile
+    await client.query(
+      `DELETE FROM employee_profile_audit
+       WHERE employee_profile_id IN (
+         SELECT id FROM employee_profile WHERE user_id = $1::bigint
+       )`,
+      [numericId]
+    )
+
+    // employee_profile — FK → employment AND users
+    await client.query(
+      `DELETE FROM employee_profile WHERE user_id = $1::bigint`,
+      [numericId]
+    )
+
+    // employment — FK → user_identity.user_uid
+    if (userUid) {
+      await client.query(
+        `DELETE FROM employment WHERE user_uid = $1::uuid`,
+        [userUid]
+      )
+    }
+
+    // user_identity — FK → user_balance.balance_uid
+    await client.query(
+      `DELETE FROM user_identity WHERE legacy_user_id = $1::bigint`,
+      [numericId]
+    )
+
+    // user_balance — must come after user_identity (which references it)
+    if (balanceUid) {
+      await client.query(
+        `DELETE FROM user_balance WHERE balance_uid = $1::uuid`,
+        [balanceUid]
+      )
+    }
+
+    // user_bank — no FK dependents, safe to delete any time before users
+    await client.query(
+      `DELETE FROM user_bank WHERE user_id = $1::bigint`,
+      [numericId]
+    )
+
+    // user_provider — no FK constraint to users, deletion is not cascaded automatically
+    await client.query(
+      `DELETE FROM user_provider WHERE user_id = $1::bigint`,
+      [numericId]
+    )
+
+    // users — root record
+    await client.query(
+      `DELETE FROM users WHERE user_id = $1::bigint`,
+      [numericId]
+    )
+
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw new Error(
+      `hardDeleteEmployee(${userId}) failed — transaction rolled back\n${err}`
+    )
+  } finally {
+    client.release()
+  }
+}
+
 export async function getUserById(userId: number) {
-  const result = await query<{ user_id: number; email: string; first_name: string; last_name: string; status: string }>(
+  const result = await query<{
+    user_id: number
+    email: string
+    first_name: string
+    last_name: string
+    status: string
+  }>(
     `SELECT user_id, email, first_name, last_name, status FROM users WHERE user_id = $1`,
     [userId]
   )

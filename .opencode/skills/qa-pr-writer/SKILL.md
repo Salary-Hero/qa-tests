@@ -1,3 +1,8 @@
+---
+name: qa-pr-writer
+description: Write a pull request description based on code changes in the current branch.
+---
+
 # Skill: qa-pr-writer
 
 ## Purpose

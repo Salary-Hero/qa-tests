@@ -6,15 +6,17 @@
   "author": "taohuh <pimpakarn@salary-hero.com>",
   "license": "MIT",
   "scripts": {
-    "test:api": "ENV=dev playwright test --project=api",
-    "test:api:staging": "ENV=staging playwright test --project=api",
-    "test:admin": "ENV=dev playwright test --project=admin",
-    "test:admin:staging": "ENV=staging playwright test --project=admin",
-    "test:hr": "ENV=dev playwright test --project=hr",
-    "test:hr:staging": "ENV=staging playwright test --project=hr",
-    "test:all": "playwright test",
+    "test:api": "DOTENV_CONFIG_QUIET=true NODE_NO_WARNINGS=1 ENV=dev playwright test --project=api",
+    "test:api:staging": "DOTENV_CONFIG_QUIET=true NODE_NO_WARNINGS=1 ENV=staging playwright test --project=api",
+    "test:admin": "DOTENV_CONFIG_QUIET=true NODE_NO_WARNINGS=1 ENV=dev playwright test --project=admin",
+    "test:admin:staging": "DOTENV_CONFIG_QUIET=true NODE_NO_WARNINGS=1 ENV=staging playwright test --project=admin",
+    "test:hr": "DOTENV_CONFIG_QUIET=true NODE_NO_WARNINGS=1 ENV=dev playwright test --project=hr",
+    "test:hr:staging": "DOTENV_CONFIG_QUIET=true NODE_NO_WARNINGS=1 ENV=staging playwright test --project=hr",
+    "test:all": "DOTENV_CONFIG_QUIET=true NODE_NO_WARNINGS=1 ENV=dev playwright test",
     "report": "playwright show-report",
     "tsc": "tsc --noEmit",
+    "cleanup:dev": "DOTENV_CONFIG_QUIET=true NODE_NO_WARNINGS=1 ENV=dev node_modules/.bin/tsx -r dotenv/config scripts/cleanup-test-data.ts",
+    "cleanup:staging": "DOTENV_CONFIG_QUIET=true NODE_NO_WARNINGS=1 ENV=staging node_modules/.bin/tsx -r dotenv/config scripts/cleanup-test-data.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -24,6 +26,7 @@
     "@types/pg": "^8.20.0",
     "dotenv": "^17.4.1",
     "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.2"
   },
   "dependencies": {
