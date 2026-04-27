@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 import dotenv from 'dotenv'
+import { getApiBaseUrl } from './shared/utils/env'
 
 dotenv.config({ path: process.env.DOTENV_FILE ?? '.env' })
 
@@ -7,11 +8,6 @@ const ENV = process.env.ENV ?? 'dev'
 const KNOWN_ENVS = ['dev', 'staging']
 if (!KNOWN_ENVS.includes(ENV)) {
   throw new Error(`Unknown ENV: "${ENV}". Must be one of: ${KNOWN_ENVS.join(', ')}`)
-}
-
-const baseURLs: Record<string, string> = {
-  dev: 'https://apiv2-dev.salary-hero.com',
-  staging: 'https://apiv2-staging.salary-hero.com',
 }
 
 const adminURLs: Record<string, string> = {
@@ -22,11 +18,6 @@ const adminURLs: Record<string, string> = {
 const hrURLs: Record<string, string> = {
   dev: 'https://console-salary-hero-dev.web.app',
   staging: 'https://console-salary-hero-test.web.app',
-}
-
-const otpCodes: Record<string, string> = {
-  dev: '111111',
-  staging: '199119',
 }
 
 export default defineConfig({
@@ -49,7 +40,7 @@ export default defineConfig({
       testDir: './api/tests',
       timeout: 60000,
       use: {
-        baseURL: baseURLs[ENV],
+        baseURL: getApiBaseUrl(),
         extraHTTPHeaders: {
           'x-app-version': process.env.APP_VERSION ?? '10.0.0',
           'Content-Type': 'application/json',
@@ -83,4 +74,4 @@ export default defineConfig({
   ],
 })
 
-export { baseURLs, adminURLs, hrURLs, otpCodes, ENV }
+

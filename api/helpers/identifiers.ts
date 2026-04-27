@@ -6,12 +6,13 @@
  * in paycycle constraints and Firebase uid mapping.
  *
  * On staging, ALL phone numbers must come from the approved bypass pool — even
- * phones that are only stored on the employee record and never receive an OTP.
- * Use resolvePhone() everywhere instead of generatePhone() directly.
+ * phones only stored on the employee record and never receiving an OTP.
+ * Always use resolvePhone() instead of generatePhone() directly.
+ * generatePhone() is a low-level primitive called only by resolvePhone().
  */
 
-import { PhonePool, getPhonePool } from '../../shared/utils/seed-config'
 import { ENV } from '../../shared/utils/env'
+import { PhonePool, getPhonePool } from '../../shared/utils/seed-config'
 
 export function pickPhoneFromPool(pool: PhonePool): string {
   if (pool.start.length !== pool.end.length) {

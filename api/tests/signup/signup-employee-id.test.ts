@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { OTP, PINCODE } from '../../../shared/utils/seed-config'
+import { OTP } from '../../../shared/utils/seed-config'
 import { SeedContext } from '../../helpers/seed'
 import {
   employeeIdSignupProfile,
@@ -11,22 +11,17 @@ import {
 } from '../../helpers/firebase'
 import { setupSeedTeardown } from '../../helpers/test-setup'
 import { parseResponse } from '../../../shared/utils/response'
+import { createPin, getProfile, logout } from '../../helpers/signup-flow'
 import {
   EmployeeIdLookupSchema,
   EmployeeIdOtpRequestSchema,
   EmployeeIdOtpVerifySchema,
   FirebaseSignInSchema,
   FirebaseRefreshSchema,
-  CreatePinSchema,
-  GetProfileSchema,
 } from '../../schema/signup.schema'
 import { endpoints } from '../../../shared/endpoints'
 import { APIRequestContext } from '@playwright/test'
-import {
-  DEFAULT_REQUEST_HEADERS,
-  AUTH_HEADERS,
-  EMPLOYEE_ID_VERIFY_PARAMS,
-} from '../../helpers/request'
+import { DEFAULT_REQUEST_HEADERS, EMPLOYEE_ID_VERIFY_PARAMS } from '../../helpers/request'
 
 async function runSignupFlow(
   request: APIRequestContext,
@@ -94,13 +89,7 @@ async function runSignupFlow(
   })
 
   await test.step('Create PIN', async () => {
-    const payload = { pincode: PINCODE }
-    const response = await request.post(endpoints.signup.createPin, {
-      data: payload,
-      headers: AUTH_HEADERS(idTokenPrePin),
-    })
-    const parsed = await parseResponse(response, CreatePinSchema, 'Create PIN', 200, payload)
-    expect(parsed.message).toBe('Create PIN successfully')
+    await createPin(request, idTokenPrePin)
   })
 
   await test.step('Get Firebase ID token (post-PIN)', async () => {
@@ -111,23 +100,14 @@ async function runSignupFlow(
   })
 
   await test.step('Get Profile', async () => {
-    const response = await request.get(endpoints.signup.getProfile, {
-      headers: AUTH_HEADERS(idTokenPostPin),
-    })
-    const parsed = await parseResponse(response, GetProfileSchema, 'Get Profile')
-    expect(parsed.profile.employee_id).toBe(employee_id)
-    expect(parsed.profile.has_pincode).toBe(true)
-    expect(parsed.profile.signup_at).not.toBeNull()
+    const body = await getProfile(request, idTokenPostPin)
+    expect(body.profile.employee_id).toBe(employee_id)
+    expect(body.profile.has_pincode).toBe(true)
+    expect(body.profile.signup_at).not.toBeNull()
   })
 
-  await test.step('Logout (best-effort)', async () => {
-    try {
-      await request.post(endpoints.signup.logout, {
-        headers: AUTH_HEADERS(idTokenPostPin),
-      })
-    } catch {
-      // logout failure does not fail the test
-    }
+  await test.step('Logout', async () => {
+    await logout(request, idTokenPostPin)
   })
 }
 

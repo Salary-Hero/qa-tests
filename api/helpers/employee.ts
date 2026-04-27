@@ -25,7 +25,7 @@ const EmployeeSearchResponseSchema = z.object({
   data: z.array(EmployeeRecordSchema).optional(),
 })
 
-export type EmployeeRecord = z.infer<typeof EmployeeRecordSchema>
+type EmployeeRecord = z.infer<typeof EmployeeRecordSchema>
 
 export type MatchField = 'phone' | 'line_id' | 'email' | 'employee_id'
 
@@ -135,29 +135,6 @@ export async function createEmployee(
 
   const body = CreateEmployeeResponseSchema.parse(await response.json())
   return { user_id: body.information.user_id }
-}
-
-export async function deleteEmployee(
-  request: APIRequestContext,
-  userId: string
-): Promise<void> {
-  if (!userId) return
-
-  const token = await getAdminToken(request)
-  const url = endpoints.admin.deleteEmployee(userId)
-
-  const response = await request.delete(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-
-  if (!response.ok() && response.status() !== 404) {
-    throw new Error(
-      `deleteEmployee failed\n` +
-        `  DELETE ${url}\n` +
-        `  Status: ${response.status()}\n` +
-        `  Response: ${await response.text()}`
-    )
-  }
 }
 
 export async function findEmployeeByIdentifier(

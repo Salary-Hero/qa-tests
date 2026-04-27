@@ -78,12 +78,4 @@ export function getPhonePool(): PhonePool {
   return pool
 }
 
-export function getOtpBypass(): OtpBypass {
-  const bypass = seedConfigForEnv.otpBypass
-  if (!bypass) {
-    throw new Error(
-      `seed-config.json: otpBypass is not configured for ENV="${ENV}"`
-    )
-  }
-  return bypass
-}
+

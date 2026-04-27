@@ -12,11 +12,6 @@ import { ZodSchema, ZodError } from 'zod'
  *   1. Unexpected HTTP status — logs method + URL + payload + response body, then throws
  *   2. Non-JSON response      — logs URL + payload + raw text, then throws
  *   3. Schema parse error     — logs URL + payload + raw body + Zod errors, then rethrows
- *
- * Usage:
- *   const data = { phone }
- *   const response = await request.post(endpoints.signup.requestOtp, { data })
- *   const parsed = await parseResponse(response, OtpRequestSchema, 'Request OTP', 200, data)
  */
 export async function parseResponse<T>(
   response: APIResponse,

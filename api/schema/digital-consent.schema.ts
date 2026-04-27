@@ -8,6 +8,7 @@ export const ImportJobConfigSchema = z.object({
   delete_action: z.boolean(),
   identifier: z.string(),
   update_columns: z.array(z.string()),
+  include_company_ids: z.array(z.number()).optional(),
 })
 
 export const ImportJobSchema = z.object({
@@ -54,8 +55,10 @@ export const ImportSuccessSchema = z.object({
 
 // --- Consent signup schemas (steps 8–10) ---
 
-// TODO: define full schema once the response contract is confirmed.
-// passthrough() is a temporary placeholder — replace with explicit field definitions.
+// TODO: define explicit fields once the screening-validate response contract is confirmed.
+// passthrough() is a temporary placeholder — it accepts any shape and validates nothing.
+// Until this is replaced, the parseResponse() call in digital-consent.test.ts only
+// asserts HTTP 200; it does not validate the response body structure.
 export const ScreeningValidateSchema = z.object({}).passthrough()
 
 export const ConsentRequestFormSchema = z.object({

@@ -1,7 +1,26 @@
 import { APIRequestContext } from '@playwright/test';
+import { z } from 'zod';
 import { endpoints } from './endpoints';
 import { getCompany } from './utils/seed-config';
 import { generateAccountNo, resolvePhone, generateEmployeeId } from '../api/helpers/identifiers';
+
+const EmployeeResponseSchema = z.object({
+  information: z.object({
+    user_id: z.number(),
+    first_name: z.string().optional(),
+    last_name: z.string().optional(),
+    email: z.string().optional(),
+    phone: z.string().optional(),
+    employee_id: z.string().optional(),
+    company_id: z.string().optional(),
+    paycycle_id: z.number().optional(),
+    status: z.string().optional(),
+    created_at: z.string().optional(),
+    updated_at: z.string().optional(),
+  }).passthrough(),
+  address: z.object({}).passthrough().optional(),
+  bank: z.object({}).passthrough().optional(),
+})
 
 export interface EmployeeInformation {
   first_name: string;
@@ -95,7 +114,7 @@ export async function createEmployeeViaAPI(
     );
   }
 
-  return response.json() as Promise<EmployeeResponse>;
+  return EmployeeResponseSchema.parse(await response.json()) as EmployeeResponse;
 }
 
 export async function updateEmployeeViaAPI(
@@ -117,7 +136,7 @@ export async function updateEmployeeViaAPI(
     );
   }
 
-  return response.json() as Promise<EmployeeResponse>;
+  return EmployeeResponseSchema.parse(await response.json()) as EmployeeResponse;
 }
 
 export async function deleteEmployeeViaAPI(

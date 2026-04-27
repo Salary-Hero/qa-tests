@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { OTP, PINCODE } from '../../../shared/utils/seed-config'
+import { OTP } from '../../../shared/utils/seed-config'
 import { phoneSignupProfile } from '../../helpers/profiles/phone'
 import {
   firebaseSignIn,
@@ -7,20 +7,15 @@ import {
 } from '../../helpers/firebase'
 import { setupSeedTeardown } from '../../helpers/test-setup'
 import { parseResponse } from '../../../shared/utils/response'
+import { createPin, getProfile, logout } from '../../helpers/signup-flow'
 import {
   OtpRequestSchema,
   OtpVerifySchema,
   FirebaseSignInSchema,
   FirebaseRefreshSchema,
-  CreatePinSchema,
-  GetProfileSchema,
 } from '../../schema/signup.schema'
 import { endpoints } from '../../../shared/endpoints'
-import {
-  DEFAULT_REQUEST_HEADERS,
-  AUTH_HEADERS,
-  PHONE_VERIFY_PARAMS,
-} from '../../helpers/request'
+import { DEFAULT_REQUEST_HEADERS, PHONE_VERIFY_PARAMS } from '../../helpers/request'
 
 test.describe('Signup by Phone', () => {
   const { beforeEach, afterEach, getContext } = setupSeedTeardown(phoneSignupProfile)
@@ -62,51 +57,37 @@ test.describe('Signup by Phone', () => {
     })
 
     await test.step('Firebase sign in with custom token', async () => {
-      const raw = await firebaseSignIn(request, firebaseCustomToken)
-      const parsed = FirebaseSignInSchema.parse(raw)
+      const parsed = FirebaseSignInSchema.parse(await firebaseSignIn(request, firebaseCustomToken))
       firebaseRefreshToken = parsed.refreshToken
     })
 
     await test.step('Get Firebase ID token (pre-PIN)', async () => {
-      const raw = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
-      const parsed = FirebaseRefreshSchema.parse(raw)
+      const parsed = FirebaseRefreshSchema.parse(
+        await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
+      )
       idTokenPrePin = parsed.id_token
     })
 
     await test.step('Create PIN', async () => {
-      const payload = { pincode: PINCODE }
-      const response = await request.post(endpoints.signup.createPin, {
-        data: payload,
-        headers: AUTH_HEADERS(idTokenPrePin),
-      })
-      const parsed = await parseResponse(response, CreatePinSchema, 'Create PIN', 200, payload)
-      expect(parsed.message).toBe('Create PIN successfully')
+      await createPin(request, idTokenPrePin)
     })
 
     await test.step('Get Firebase ID token (post-PIN)', async () => {
-      const raw = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
-      const parsed = FirebaseRefreshSchema.parse(raw)
+      const parsed = FirebaseRefreshSchema.parse(
+        await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
+      )
       idTokenPostPin = parsed.id_token
     })
 
     await test.step('Get Profile', async () => {
-      const response = await request.get(endpoints.signup.getProfile, {
-        headers: AUTH_HEADERS(idTokenPostPin),
-      })
-      const parsed = await parseResponse(response, GetProfileSchema, 'Get Profile')
-      expect(parsed.profile.phone).toBe(phone)
-      expect(parsed.profile.has_pincode).toBe(true)
-      expect(parsed.profile.signup_at).not.toBeNull()
+      const body = await getProfile(request, idTokenPostPin)
+      expect(body.profile.phone).toBe(phone)
+      expect(body.profile.has_pincode).toBe(true)
+      expect(body.profile.signup_at).not.toBeNull()
     })
 
-    await test.step('Logout (best-effort)', async () => {
-      try {
-        await request.post(endpoints.signup.logout, {
-          headers: AUTH_HEADERS(idTokenPostPin),
-        })
-      } catch {
-        // logout failure does not fail the test
-      }
+    await test.step('Logout', async () => {
+      await logout(request, idTokenPostPin)
     })
   })
 })

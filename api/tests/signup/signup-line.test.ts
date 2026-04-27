@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
+import { OTP } from '../../../shared/utils/seed-config'
 import { LINE_CHANNEL_ID } from '../../../shared/utils/env'
-import { OTP, PINCODE } from '../../../shared/utils/seed-config'
 import { lineSignupProfile } from '../../helpers/profiles/line'
 import { getLineAccessToken } from '../../helpers/line-auth'
 import {
@@ -9,20 +9,16 @@ import {
 } from '../../helpers/firebase'
 import { setupSeedTeardown } from '../../helpers/test-setup'
 import { parseResponse } from '../../../shared/utils/response'
+import { createPin, getProfile, logout } from '../../helpers/signup-flow'
 import {
   LineSignupSchema,
   LineOtpRequestSchema,
   LineOtpVerifySchema,
   FirebaseSignInSchema,
   FirebaseRefreshSchema,
-  CreatePinSchema,
-  GetProfileSchema,
 } from '../../schema/signup.schema'
 import { endpoints } from '../../../shared/endpoints'
-import {
-  DEFAULT_REQUEST_HEADERS,
-  AUTH_HEADERS,
-} from '../../helpers/request'
+import { DEFAULT_REQUEST_HEADERS } from '../../helpers/request'
 
 test.describe('Signup by LINE', () => {
   test.describe.configure({ mode: 'serial' })
@@ -94,13 +90,7 @@ test.describe('Signup by LINE', () => {
     })
 
     await test.step('Create PIN', async () => {
-      const payload = { pincode: PINCODE }
-      const response = await request.post(endpoints.signup.createPin, {
-        data: payload,
-        headers: AUTH_HEADERS(idTokenPrePin),
-      })
-      const parsed = await parseResponse(response, CreatePinSchema, 'Create PIN', 200, payload)
-      expect(parsed.message).toBe('Create PIN successfully')
+      await createPin(request, idTokenPrePin)
     })
 
     await test.step('Get Firebase ID token (post-PIN)', async () => {
@@ -111,23 +101,14 @@ test.describe('Signup by LINE', () => {
     })
 
     await test.step('Get Profile', async () => {
-      const response = await request.get(endpoints.signup.getProfile, {
-        headers: AUTH_HEADERS(idTokenPostPin),
-      })
-      const parsed = await parseResponse(response, GetProfileSchema, 'Get Profile')
-      expect(parsed.profile.line_id).toBe(line_id)
-      expect(parsed.profile.has_pincode).toBe(true)
-      expect(parsed.profile.signup_at).not.toBeNull()
+      const body = await getProfile(request, idTokenPostPin)
+      expect(body.profile.line_id).toBe(line_id)
+      expect(body.profile.has_pincode).toBe(true)
+      expect(body.profile.signup_at).not.toBeNull()
     })
 
-    await test.step('Logout (best-effort)', async () => {
-      try {
-        await request.post(endpoints.signup.logout, {
-          headers: AUTH_HEADERS(idTokenPostPin),
-        })
-      } catch {
-        // logout failure does not fail the test
-      }
+    await test.step('Logout', async () => {
+      await logout(request, idTokenPostPin)
     })
   })
 })

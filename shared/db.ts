@@ -40,6 +40,3 @@ export async function getClient(): Promise<PoolClient> {
   return pool.connect();
 }
 
-export async function closePool(): Promise<void> {
-  await pool.end();
-}
