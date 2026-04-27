@@ -22,17 +22,21 @@ export const ImportJobSchema = z.object({
 export const ImportMappingSchema = z.object({
   id: z.string(),
   company_id: z.number(),
-  mapping: z.record(z.string(), z.string()),
+  // Mapping values may be null when a column exists in the template but was
+  // not mapped (e.g. employee-ID-only import has no national_id/passport_no)
+  mapping: z.record(z.string(), z.string().nullable()),
   update_columns: z.array(z.string()),
 })
 
 const PreviewRowSchema = z.object({
   employee_id: z.string(),
-  // API inconsistently returns national_id as string or number — normalise to string
-  national_id: z.union([z.string(), z.number()]).transform(String),
-  passport_no: z.string(),
-  company_id: z.number(),
-})
+  // national_id and passport_no are absent when the import file has employee_id only
+  // API also inconsistently returns national_id as string or number — normalise to string
+  national_id: z.union([z.string(), z.number()]).transform(String).optional(),
+  passport_no: z.string().optional(),
+  // company_id may be returned as string or number depending on import type
+  company_id: z.union([z.string(), z.number()]).optional(),
+}).passthrough()
 
 export const ImportPreviewSchema = z.object({
   job_id: z.string(),

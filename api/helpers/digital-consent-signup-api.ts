@@ -70,6 +70,65 @@ export async function submitConsentRequestForm(
 }
 
 /**
+ * POST /v2/public/account/consent/screening/validate
+ * Variant for companies that import employee_id only — checks the employee
+ * exists in the consent import without requiring a personal_id.
+ */
+export async function validateScreeningEmployee(
+  request: APIRequestContext,
+  employeeId: string,
+  companyId: number
+): Promise<void> {
+  const payload = {
+    employee_id: employeeId,
+    company_id: companyId,
+  }
+  const response = await request.post(endpoints.consent.screeningValidate, {
+    headers: DEFAULT_REQUEST_HEADERS,
+    data: payload,
+  })
+  await parseResponse(response, ScreeningValidateSchema, 'Screening Validate (Employee ID Only)', 200, payload)
+}
+
+/**
+ * POST /v2/public/account/consent/request-form/request
+ * Variant for companies that import employee_id only (no national_id/passport_no
+ * pre-loaded). The screening key contains only employee_id; the user-provided
+ * identity (national_id or passport_no) is sent in request_form instead.
+ * Returns the ref_code for OTP verification.
+ */
+export async function submitConsentEmployeeIdOnlyRequestForm(
+  request: APIRequestContext,
+  employeeId: string,
+  personalId: string,
+  personalIdType: PersonalIdType,
+  companyId: number,
+  phone: string,
+  email: string
+): Promise<string> {
+  const payload = {
+    personal_id_type: personalIdType,
+    company_id: companyId,
+    screening: {
+      employee_id: employeeId,
+    },
+    request_form: {
+      first_name: 'QA',
+      last_name: 'Consent',
+      personal_id: personalId,
+      email,
+      phone,
+    },
+  }
+  const response = await request.post(endpoints.consent.requestForm, {
+    headers: DEFAULT_REQUEST_HEADERS,
+    data: payload,
+  })
+  const parsed = await parseResponse(response, ConsentRequestFormSchema, 'Request Form (Employee ID Only)', 200, payload)
+  return parsed.verification.ref_code
+}
+
+/**
  * POST /v1/public/account/consent/request-form/verify
  * Verifies the OTP and returns the Firebase custom token for sign-in.
  */

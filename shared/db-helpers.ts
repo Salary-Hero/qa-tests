@@ -30,6 +30,29 @@ export async function findSignedUpUserIds(
 }
 
 /**
+ * Finds user IDs for employees that have signed up, searched by employee_id
+ * and company_id via the employment table.
+ *
+ * Used for companies that import employee_id only (no national_id/passport_no
+ * pre-loaded in the import), where findSignedUpUserIds() cannot be used because
+ * there are no identity values to search by in user_identity.
+ */
+export async function findSignedUpUserIdsByEmployeeIds(
+  employeeIds: string[],
+  companyId: number
+): Promise<string[]> {
+  const { rows } = await query<{ user_id: string }>(
+    `SELECT DISTINCT u.user_id::text
+     FROM users u
+     JOIN employment e ON e.legacy_user_id = u.user_id
+     WHERE e.employee_id = ANY($1::text[])
+       AND e.company_id = $2`,
+    [employeeIds, companyId]
+  )
+  return rows.map((r) => r.user_id)
+}
+
+/**
  * Hard-deletes employee_profile and employee_profile_audit rows for the given
  * employee IDs and company. Must delete audit rows first (FK constraint).
  *
