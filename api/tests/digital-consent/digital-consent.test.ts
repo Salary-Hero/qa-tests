@@ -70,15 +70,15 @@ test.describe('Digital Consent', () => {
     })
   })
 
-  // test.afterAll(async () => {
-  //   await test.step('Cleanup signed-up users', async () => {
-  //     await cleanupSignedUpUsers()
-  //   })
+  test.afterAll(async () => {
+    await test.step('Cleanup signed-up users', async () => {
+      await cleanupSignedUpUsers()
+    })
 
-  //   await test.step('Cleanup employee_profile records', async () => {
-  //     await deleteEmployeeProfileRecords(TEST_EMPLOYEE_IDS, COMPANY_ID)
-  //   })
-  // })
+    await test.step('Cleanup employee_profile records', async () => {
+      await deleteEmployeeProfileRecords(TEST_EMPLOYEE_IDS, COMPANY_ID)
+    })
+  })
 
   test.afterEach(async () => {
     await test.step('Cleanup — hard delete signed-up user', async () => {
