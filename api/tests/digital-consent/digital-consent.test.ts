@@ -112,13 +112,6 @@ test.describe('Digital Consent', () => {
     'API – Digital Consent – Signup with national_id – consent_status = pending_review',
     { tag: ['@component', '@high', '@regression', '@guardian'] },
     async ({ request }) => {
-      // TODO: Backend issue — consent verifyForm issues a Firebase custom token whose uid
-      // is not linked to any user in the Salary Hero DB. The createPin endpoint resolves
-      // the user by Firebase UID from the Bearer token, but the consent-created user has
-      // no Firebase UID association. Requires backend team investigation.
-      // Tracked: createPin returns 400 "user_id is required" even with a valid Firebase ID token.
-      test.skip(true, 'Backend issue: consent signup Firebase UID not linked to user record — pending backend fix')
-
       const employee = TEST_EMPLOYEES[0] // EMPAPI-CONSENT-001
       const phone = resolvePhone()
       const email = generateEmail()
@@ -181,9 +174,6 @@ test.describe('Digital Consent', () => {
     'API – Digital Consent – Signup with passport_no – consent_status = pending_review',
     { tag: ['@component', '@high', '@regression', '@guardian'] },
     async ({ request }) => {
-      // TODO: Same backend issue as national_id test — skipped pending fix.
-      test.skip(true, 'Backend issue: consent signup Firebase UID not linked to user record — pending backend fix')
-
       const employee = TEST_EMPLOYEES[1] // EMPAPI-CONSENT-002
       const phone = resolvePhone()
       const email = generateEmail()
