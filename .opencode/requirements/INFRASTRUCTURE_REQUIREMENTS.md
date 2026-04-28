@@ -60,11 +60,13 @@ This installs all required packages from `package.json`:
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `@playwright/test` | 1.40+ | Test framework & browser automation |
-| `zod` | 3.22+ | Schema validation |
-| `pg` | 8.10+ | PostgreSQL database client |
-| `dotenv` | 16.3+ | Environment variable management |
-| `dotenv-expand` | 10.0+ | Variable interpolation in .env |
+| `@playwright/test` | 1.59+ | Test framework & browser automation |
+| `zod` | 4.3+ | Schema validation |
+| `pg` | 8.20+ | PostgreSQL database client |
+| `dotenv` | 17.4+ | Environment variable management |
+| `uuid` | 14.0+ | UUID generation for test data |
+
+> **Note on `DOTENV_CONFIG_QUIET=true NODE_NO_WARNINGS=1`:** The cleanup scripts use `tsx -r dotenv/config` which can emit Node.js deprecation warnings. All `yarn` scripts suppress this with that prefix. If you run scripts directly without `yarn`, you may see cosmetic warnings — they do not affect test execution.
 
 **Dev Dependencies:**
 - `@types/node` - TypeScript type definitions
@@ -96,50 +98,51 @@ nano .env  # or your preferred editor
 
 ### Environment Variables
 
-**Required for DEV environment:**
+There is a **single `.env` file** at the project root. Each key uses a `_DEV` or `_STAGING` suffix — never split into separate `.env.dev` / `.env.staging` files. The `ENV` variable controls which suffix is active at runtime.
+
+> **OTP and PINCODE are not in `.env`.** They live in `shared/fixtures/seed-config.json` per environment. Never add `OTP=` or `PINCODE=` to `.env`.
 
 ```env
-# API Configuration
+# Which environment is active — controls which _DEV / _STAGING keys are used
 ENV=dev
-API_BASE_URL=https://apiv2-dev.salary-hero.com/api
 
-# Admin Credentials (using environment-suffixed format)
+# Admin credentials
 ADMIN_EMAIL_DEV=admin@example.com
+ADMIN_EMAIL_STAGING=admin-staging@example.com
 ADMIN_PASSWORD_DEV=password123
+ADMIN_PASSWORD_STAGING=password_staging
 
-# Firebase Configuration
-FIREBASE_API_KEY_DEV=AIza...{your-firebase-key}
-FIREBASE_PROJECT_ID=salary-hero-dev
+# Firebase
+FIREBASE_API_KEY_DEV=AIza...{your-dev-firebase-key}
+FIREBASE_API_KEY_STAGING=AIza...{your-staging-firebase-key}
 
-# OTP & PIN for Testing
-OTP=123456
-PINCODE=999999
+# LINE Integration (for LINE signup tests only)
+LINE_CHANNEL_ID_DEV=1234567890
+LINE_CHANNEL_ID_STAGING=0987654321
+LINE_CHANNEL_SECRET_DEV=abc123
+LINE_CHANNEL_SECRET_STAGING=def456
+LINE_REFRESH_TOKEN_DEV={your-dev-line-refresh-token}
+LINE_REFRESH_TOKEN_STAGING={your-staging-line-refresh-token}
 
-# LINE Integration (for LINE signup tests)
-LINE_CHANNEL_ID=1234567890
-LINE_ACCESS_TOKEN_DEV={your-line-token}
-
-# Database Configuration (for verification queries)
-DB_HOST=localhost
+# Database — dev and staging share the same RDS host, different DB names
+DB_HOST=salary-hero.c5abcd.us-east-1.rds.amazonaws.com
 DB_PORT=5432
 DB_USER=postgres
-DB_PASSWORD=password
-DB_NAME=salary_hero_dev
-DB_SSL=false
-
-# Company & Test Data
-TEST_COMPANY_ID=128
+DB_PASSWORD=secure_password
+DB_NAME_DEV=salary_hero_dev
+DB_NAME_STAGING=salary_hero_staging
+DB_SSL=true
 ```
 
-**For STAGING:**
-```env
-ENV=staging
-API_BASE_URL=https://apiv2-staging.salary-hero.com/api
-ADMIN_EMAIL_STAGING=admin@example.com
-ADMIN_PASSWORD_STAGING=password123
-FIREBASE_API_KEY_STAGING=AIza...
-...
-```
+**Keys that must NOT be in `.env`:**
+
+| Key | Correct location | Reason |
+|---|---|---|
+| `OTP` | `shared/fixtures/seed-config.json` | Per-env value; wrong OTP on staging sends a real SMS |
+| `PINCODE` | `shared/fixtures/seed-config.json` | Same reason |
+| `TEST_COMPANY_ID` | `shared/fixtures/seed-config.json` | Use `getCompany('name')` — never hardcode |
+| `API_BASE_URL` | `playwright.config.ts` | Base URL lives in Playwright config, not `.env` |
+| `DB_NAME` | N/A — use `DB_NAME_DEV` / `DB_NAME_STAGING` | Prevents accidentally connecting wrong DB |
 
 **Security Note:**
 - Never commit `.env` (already in .gitignore)
@@ -189,16 +192,19 @@ pg_ctl -D /usr/local/var/postgres start  # macOS alternative
 createdb salary_hero_dev
 ```
 
-**Remote Development (Cloud Database):**
+**Remote Development (Cloud Database — standard setup):**
 ```bash
 # Configure in .env:
 DB_HOST=salary-hero-dev.c5abcd.us-east-1.rds.amazonaws.com
 DB_PORT=5432
 DB_USER=postgres
 DB_PASSWORD=secure_password
-DB_NAME=salary_hero_dev
+DB_NAME_DEV=salary_hero_dev
+DB_NAME_STAGING=salary_hero_staging
 DB_SSL=true
 ```
+
+`shared/db.ts` reads `DB_NAME_DEV` or `DB_NAME_STAGING` based on the active `ENV`. Never use a plain `DB_NAME` key.
 
 ### Database Tables Required
 
@@ -208,13 +214,18 @@ Tests assume these tables exist:
 |-------|---------|
 | `users` | Employee user records |
 | `employment` | Employment relationships |
-| `user_identity` | Identity information |
+| `user_identity` | Identity information (national_id, passport_no) |
 | `user_balance` | Account balance tracking |
 | `user_address` | Address information |
 | `user_bank` | Bank account details |
+| `user_provider` | Third-party auth provider links (LINE, Entra ID) — no FK to `users`, must be deleted explicitly |
+| `employee_profile` | Consent status and employee profile records |
+| `employee_profile_audit` | Audit trail for employee_profile changes |
+
+**Delete order for `hardDeleteEmployee()`:** `employee_profile_audit → employee_profile → employment → user_identity → user_balance → user_bank → user_provider → users`
 
 **Initialization:**
-Database should be pre-initialized with schema and test company (company_id=128).
+Database should be pre-initialized with schema and test company data. Never use `company_id=128` as a hardcoded literal — resolve via `getCompany('phone')` or the relevant auth method name.
 
 ---
 
@@ -310,26 +321,26 @@ export const config: PlaywrightTestConfig = {
 
 ```bash
 # Run all API tests (DEV environment)
-npm run test:api
+yarn test:api
 
 # Run specific test file
-npm run test:api -- api/tests/employees/employee.spec.ts
+yarn test:api --grep "Employee CRUD"
 
-# Run tests matching pattern
-npm run test:api -- --grep "CREATE"
+# Run smoke tests only
+yarn test:api --grep @smoke
 
-# Run tests in headed mode (show logs)
-npm run test:api -- --headed
+# Run tests for a specific squad
+yarn test:api --grep @guardian
 ```
 
 ### With Different Environments
 
 ```bash
 # STAGING environment
-npm run test:api:staging
+yarn test:api:staging
 
-# Override environment in command
-ENV=staging npm run test:api
+# Smoke gate on staging
+yarn test:api:staging --grep @smoke
 ```
 
 ### Test Results
@@ -396,6 +407,46 @@ Store sensitive values as GitHub Secrets:
 - `ADMIN_PASSWORD`
 - `FIREBASE_API_KEY_DEV`
 - `DB_PASSWORD`
+
+---
+
+## Cleanup Strategy
+
+### afterEach vs the cleanup script — when to use each
+
+| Situation | Use |
+|---|---|
+| Normal test run — each test creates one employee | `afterEach` with `hardDeleteEmployee()` via the seed profile |
+| Test crashed mid-run and left orphaned data | `yarn cleanup:dev --force` |
+| Staging run left orphaned phone numbers blocking re-runs | `yarn cleanup:staging --force` |
+| Pre-seed forced cleanup before creating a fresh employee | Built into `seedFromProfile()` — runs automatically |
+
+### How `afterEach` cleanup works
+
+Tests using `setupSeedTeardown(profile)` get automatic lifecycle hooks. After each test, `cleanupFromProfile()` runs all cleanup steps defined in the profile — best-effort, errors are logged as warnings and never thrown. This means a cleanup failure does not mask a test failure.
+
+### Cleanup script
+
+```bash
+yarn cleanup:dev --force      # removes all EMPAPI* employees from dev DB
+yarn cleanup:staging --force  # same for staging
+```
+
+The script targets employees whose `employee_id` starts with `EMPAPI`. This prefix is enforced by `generateEmployeeId()` in `api/helpers/identifiers.ts`. Never change the prefix without updating the cleanup script.
+
+The script also removes orphaned `user_provider` rows for QA company IDs, since `user_provider` has no FK cascade from `users`.
+
+### Manual cleanup via API
+
+If you need to delete a specific employee by user_id without running the script:
+
+```bash
+# Get admin token first, then:
+curl -X DELETE https://apiv2-dev.salary-hero.com/api/v1/admin/account/employee/{userId} \
+  -H "Authorization: Bearer {token}"
+```
+
+Note: The API performs a **soft delete** only — `deleted_at` is set but records remain. Soft-deleted phone numbers still block uniqueness constraints. Always follow with `hardDeleteEmployee(userId)` from `shared/db-helpers.ts` if you need full cleanup.
 
 ---
 

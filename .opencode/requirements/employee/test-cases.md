@@ -1,7 +1,7 @@
 # Employee CRUD — Test Cases
 
-Test file: `api/tests/employees/employee.spec.ts`
-Run: `npm run test:api -- api/tests/employees/employee.spec.ts`
+Test file: `api/tests/employees/employee.test.ts`
+Run: `yarn test:api --grep "Employee CRUD"`
 
 ---
 
@@ -137,3 +137,128 @@ For each employee:
 ```
 
 **Fails if:** Any create/update fails · Unique constraint violation · Any DB record missing · Cleanup incomplete
+
+---
+
+## Negative Test Cases (Planned)
+
+These cases are **not yet implemented**. They are documented here so the AI has full context when asked to implement them. Add them to `api/tests/employees/employee.test.ts` in a separate `describe('Employee CRUD — negative cases')` block.
+
+All negative tests still require:
+- All four mandatory tags: `@component`, `@high/@medium`, `@regression`, `@shared`
+- Full `test.step()` wrapping
+- `afterEach` cleanup if an employee was created
+
+---
+
+### TC-EMP-NEG-001 · Create Employee — Duplicate Phone
+
+**Priority:** High | **Status:** 🔲 PLANNED
+
+**Scenario:** Attempt to create two employees with the same phone number. The second create should be rejected.
+
+**Setup:** Create employee A with `resolvePhone()`. Capture `user_id` of A.
+
+**Steps:**
+1. Create employee A — expect 201
+2. Attempt to create employee B with the same phone as A
+3. Assert response is 409 (or whatever error code the API returns for duplicate)
+4. Verify employee B does not exist in DB
+
+**Teardown:** `hardDeleteEmployee(userIdA)`
+
+**Pass when:**
+```
+First create: status = 201
+Second create: status = 409
+DB: only one user with that phone exists
+```
+
+---
+
+### TC-EMP-NEG-002 · Create Employee — Missing Required Fields
+
+**Priority:** High | **Status:** 🔲 PLANNED
+
+**Scenario:** Attempt to create an employee omitting a required field (`phone`, `employee_id`, `paycycle_id`). The API must reject with a 4xx error.
+
+**Setup:** No employee needed — this is a pure request validation test.
+
+**Steps:**
+1. Send `POST /v1/admin/account/employee/{companyId}` with `phone` omitted
+2. Assert 400 (or 422 — check actual API contract)
+3. Repeat with `employee_id` omitted
+4. Repeat with `paycycle_id` omitted
+
+**Pass when:**
+```
+Each request: status = 4xx
+Response body contains a meaningful error message
+No employee created in DB
+```
+
+---
+
+### TC-EMP-NEG-003 · Update Employee — Read-Only Field Rejected
+
+**Priority:** High | **Status:** 🔲 PLANNED
+
+**Scenario:** Send a PATCH that includes `user_id` in the body. The API should reject it with 403.
+
+**Setup:** Create a fresh employee.
+
+**Steps:**
+1. Create employee — capture `user_id`
+2. Build PATCH payload that includes `user_id: userId`
+3. `PATCH /v1/admin/account/employee/{companyId}/{userId}`
+4. Assert response is 403
+
+**Teardown:** `hardDeleteEmployee(userId)`
+
+**Pass when:**
+```
+status = 403
+Employee data unchanged in DB
+```
+
+**Note:** Verify this against the actual API contract — also test `created_at` and `updated_at` as read-only fields if the contract specifies them.
+
+---
+
+### TC-EMP-NEG-004 · Update Employee — Wrong paycycle_id Type
+
+**Priority:** Medium | **Status:** 🔲 PLANNED
+
+**Scenario:** Send `paycycle_id` as a string (e.g. `"3661"`) instead of a number. Verify the API rejects or handles it consistently.
+
+**Setup:** Create a fresh employee.
+
+**Steps:**
+1. Create employee — capture `user_id`
+2. Build PATCH payload with `paycycle_id: "3661"` (string, not number)
+3. Send PATCH
+4. Assert response — document actual behaviour (reject 4xx, or accept and coerce)
+
+**Teardown:** `hardDeleteEmployee(userId)`
+
+**Note:** This test documents API behaviour — the expected status depends on what the API actually does. The goal is to catch regressions if the API's type handling changes.
+
+---
+
+### TC-EMP-NEG-005 · Delete Employee — Non-Existent user_id
+
+**Priority:** Medium | **Status:** 🔲 PLANNED
+
+**Scenario:** Attempt to delete a `user_id` that does not exist. The API must return 404 (not 500).
+
+**Setup:** No employee needed.
+
+**Steps:**
+1. Call `DELETE /v1/admin/account/employee/999999999` (guaranteed non-existent ID)
+2. Assert response is 404
+
+**Pass when:**
+```
+status = 404
+Response body contains an error message (not a 500 stack trace)
+```

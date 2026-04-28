@@ -28,7 +28,31 @@ description: QA coding standards, project-specific rules, and anti-patterns for 
 
 - Raw SQL (`query(...)`) is permitted **only** in `shared/db-helpers.ts`.
 - Test files (`.test.ts`) must **never** import `query` or `getClient` directly.
-- Cleanup functions that touch the DB must live in `shared/db-helpers.ts`, not inline in test files.
+- Cleanup functions that touch the DB must live in `shared/db-helpers.ts`, not inline in test files. This includes any wrapper function that calls `hardDeleteEmployee()`, `findSignedUpUserIds()`, or any other DB helper — even if it does not call `query()` directly. If its purpose is cleanup and it touches the DB, it belongs in `shared/db-helpers.ts` as a named export.
+
+  **Wrong — inline cleanup defined in `.test.ts`:**
+  ```typescript
+  async function cleanupSignedUpUsers() {
+    const userIds = await findSignedUpUserIds(NATIONAL_IDS, PASSPORT_NOS)
+    for (const userId of userIds) {
+      await hardDeleteEmployee(userId)
+    }
+  }
+  ```
+
+  **Correct — named export in `shared/db-helpers.ts`, imported by the test:**
+  ```typescript
+  // shared/db-helpers.ts
+  export async function cleanupConsentSignedUpUsers(
+    nationalIds: string[],
+    passportNos: string[]
+  ): Promise<void> {
+    const userIds = await findSignedUpUserIds(nationalIds, passportNos)
+    for (const userId of userIds) {
+      await hardDeleteEmployee(userId)
+    }
+  }
+  ```
 
 ## 4. TypeScript
 
@@ -217,7 +241,8 @@ The script also removes orphaned `user_provider` rows filtered by QA company ID 
 ## 11. Code Comments
 
 - Comments explain "why", not "what".
-- No section divider boxes. No narration comments. No test count annotations in describe labels.
+- No section divider boxes of any form — no `// ---`, no `// ===`, no `// *** Name ***`, no `// ───`. Use whitespace, `describe` blocks, or function names to separate logical groups instead.
+- No narration comments. No test count annotations in describe labels.
 - File-level JSDoc max ~15 lines.
 
 ## 12. Code Writing Standards — Prevention Habits
@@ -287,8 +312,42 @@ The staging environment sends **real OTP messages** to real phone numbers.
 | `employee_id LIKE 'EMP%'` in custom SQL | `LIKE 'EMPAPI%'` — current prefix |
 | `try/finally` cleanup inside test body | `afterEach` with `userIdsToClean` array |
 | `query()` inside `.test.ts` | Named function in `shared/db-helpers.ts` |
+| DB-touching cleanup function defined inline in `.test.ts` | Named export in `shared/db-helpers.ts` — even wrappers around `hardDeleteEmployee()` |
+| `// ---` or `// ===` section divider comments | Whitespace or `describe` blocks to separate logical groups |
 | Semicolons in test files | No semicolons — match the rest of the codebase |
+
+## 15. UI Tests — Out of Scope for This Skill
+
+This skill covers **API tests only** (`api/tests/`). The repo also contains UI tests under `ui/admin/` and `ui/hr/`, which use Playwright in browser mode with Page Object Models.
+
+Do not apply API test patterns to UI tests:
+- UI tests do not use `parseResponse()`, `hardDeleteEmployee()`, or `SeedProfile`
+- UI tests do not live under `api/` — never create UI test files there
+- If asked to write a UI test, state that this skill does not cover UI testing and ask the user for UI-specific standards before proceeding
+
+## 16. New Test Checklist
+
+Run through this checklist before writing any new test file. Each item maps to a rule in the sections above.
+
+```
+[ ] Endpoint URL added to shared/endpoints.ts (§6)
+[ ] Zod schema created in api/schema/{feature}.schema.ts (§8)
+[ ] Company ID resolved via getCompany('name') in seed-config.ts — no hardcoded numbers (§2)
+[ ] Env vars accessed through shared/utils/env.ts — no process.env in test code (§2)
+[ ] Identifiers generated from api/helpers/identifiers.ts using resolvePhone() (§7)
+[ ] Seed profile created in api/helpers/profiles/{auth-method}.ts if new auth method (§6)
+[ ] DB cleanup function added to shared/db-helpers.ts if DB teardown is needed (§3)
+[ ] Test file named {feature}.test.ts — never .spec.ts (§5)
+[ ] Every action in test()/beforeAll()/afterEach() etc. wrapped in test.step() (§5)
+[ ] Test name follows: [Type] – [Feature] – [Scenario] – [Expected Result] (§5)
+[ ] All four mandatory tags present: @component/@workflow, @high/@medium/@low, @smoke/@regression, @guardian/@avengers/@shared (§5)
+[ ] No any types, no as any casts (§4)
+[ ] yarn tsc passes with zero errors (§4)
+[ ] COVERAGE_MATRIX.md updated with new test IDs (§6 reference doc)
+```
+
+When using the `/new-test` command this checklist is applied automatically. When scaffolding manually, work through it top to bottom.
 
 ---
 
-**Last updated**: April 2026
+**Last updated**: April 2026 — added Section 15 (UI tests out of scope), Section 16 (new test checklist); fixed Section 3 (DB cleanup placement with example), Section 11 (explicit divider comment ban), Section 14 (two new anti-patterns)

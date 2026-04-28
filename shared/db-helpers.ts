@@ -12,6 +12,40 @@ import { query, getClient } from './db'
 // ---------------------------------------------------------------------------
 
 /**
+ * Hard-deletes all users from previous digital consent test runs.
+ * Searches by national_id and passport_no — used when identity values are
+ * pre-loaded in the import file (standard consent flow).
+ */
+export async function cleanupConsentSignedUpUsers(
+  nationalIds: string[],
+  passportNos: string[]
+): Promise<void> {
+  const userIds = await findSignedUpUserIds(nationalIds, passportNos)
+  for (const userId of userIds) {
+    await hardDeleteEmployee(userId)
+  }
+}
+
+/**
+ * Hard-deletes all users from previous digital consent employee-ID-only test runs.
+ * Searches by employee_id via the employment table — used when the import file
+ * has no pre-loaded national_id or passport_no values.
+ */
+export async function cleanupConsentEidSignedUpUsers(
+  employeeIds: string[],
+  companyId: number
+): Promise<void> {
+  const userIds = await findSignedUpUserIdsByEmployeeIds(employeeIds, companyId)
+  for (const userId of userIds) {
+    try {
+      await hardDeleteEmployee(userId)
+    } catch {
+      // best-effort — user may already be gone
+    }
+  }
+}
+
+/**
  * Finds user IDs in user_identity that match the given national IDs or passport numbers.
  * Used to locate signed-up users from previous runs before the import worker re-runs.
  */
