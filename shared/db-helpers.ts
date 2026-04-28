@@ -12,6 +12,40 @@ import { query, getClient } from './db'
 // ---------------------------------------------------------------------------
 
 /**
+ * Hard-deletes all users from previous digital consent test runs.
+ * Searches by national_id and passport_no — used when identity values are
+ * pre-loaded in the import file (standard consent flow).
+ */
+export async function cleanupConsentSignedUpUsers(
+  nationalIds: string[],
+  passportNos: string[]
+): Promise<void> {
+  const userIds = await findSignedUpUserIds(nationalIds, passportNos)
+  for (const userId of userIds) {
+    await hardDeleteEmployee(userId)
+  }
+}
+
+/**
+ * Hard-deletes all users from previous digital consent employee-ID-only test runs.
+ * Searches by employee_id via the employment table — used when the import file
+ * has no pre-loaded national_id or passport_no values.
+ */
+export async function cleanupConsentEidSignedUpUsers(
+  employeeIds: string[],
+  companyId: number
+): Promise<void> {
+  const userIds = await findSignedUpUserIdsByEmployeeIds(employeeIds, companyId)
+  for (const userId of userIds) {
+    try {
+      await hardDeleteEmployee(userId)
+    } catch {
+      // best-effort — user may already be gone
+    }
+  }
+}
+
+/**
  * Finds user IDs in user_identity that match the given national IDs or passport numbers.
  * Used to locate signed-up users from previous runs before the import worker re-runs.
  */
@@ -27,6 +61,29 @@ export async function findSignedUpUserIds(
     [nationalIds, passportNos]
   )
   return rows.map((r) => r.legacy_user_id)
+}
+
+/**
+ * Finds user IDs for employees that have signed up, searched by employee_id
+ * and company_id via the employment table.
+ *
+ * Used for companies that import employee_id only (no national_id/passport_no
+ * pre-loaded in the import), where findSignedUpUserIds() cannot be used because
+ * there are no identity values to search by in user_identity.
+ */
+export async function findSignedUpUserIdsByEmployeeIds(
+  employeeIds: string[],
+  companyId: number
+): Promise<string[]> {
+  const { rows } = await query<{ user_id: string }>(
+    `SELECT DISTINCT u.user_id::text
+     FROM users u
+     JOIN employment e ON e.legacy_user_id = u.user_id
+     WHERE e.employee_id = ANY($1::text[])
+       AND e.company_id = $2`,
+    [employeeIds, companyId]
+  )
+  return rows.map((r) => r.user_id)
 }
 
 /**

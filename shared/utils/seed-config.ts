@@ -1,7 +1,7 @@
 import seedConfig from '../fixtures/seed-config.json'
 import { ENV } from './env'
 
-export type AuthMethod = 'phone' | 'line' | 'employee_id' | 'entra_id' | 'digital_consent'
+export type AuthMethod = 'phone' | 'line' | 'employee_id' | 'entra_id' | 'digital_consent' | 'digital_consent_employee_id'
 
 export type Company = {
   id: number

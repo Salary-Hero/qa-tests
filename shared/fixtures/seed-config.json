@@ -9,7 +9,8 @@
       "line": { "id": 127, "name": "QA - Line Signup Only", "qa_paycycle_id": 1268 },
       "employee_id": { "id": 129, "name": "QA - EmployeeID and National ID/Passport Signup Only", "qa_paycycle_id": 3042 },
       "entra_id": { "id": 1143, "name": "QA - Microsoft Entra ID Signup Only", "qa_paycycle_id": 3637 },
-      "digital_consent": { "id": 514, "name": "QA - Digital Consent Employee ID & National ID/Passport", "qa_paycycle_id": 2074 }
+      "digital_consent": { "id": 514, "name": "QA - Digital Consent Employee ID & National ID/Passport", "qa_paycycle_id": 2074 },
+      "digital_consent_employee_id": { "id": 866, "name": "QA - Digital Consent Employee ID", "qa_paycycle_id": 3107 }
     },
     "fixedIdentifiers": {
       "line_id": "U4f3fa9982dd206de074a790764f6fe80",
@@ -28,7 +29,8 @@
       "line": { "id": 126, "name": "QA - Line Only", "qa_paycycle_id": 2139 },
       "employee_id": { "id": 1288, "name": "QA - Employee ID & National ID/Passport No Signup Only", "qa_paycycle_id": 5151 },
       "entra_id": { "id": 1054, "name": "QA - Microsoft Signup Only", "qa_paycycle_id": 4706 },
-      "digital_consent": { "id": 1335, "name": "QA - Digital Consent Employee ID & National ID/Passport", "qa_paycycle_id": 5206 }
+      "digital_consent": { "id": 1335, "name": "QA - Digital Consent Employee ID & National ID/Passport", "qa_paycycle_id": 5206 },
+      "digital_consent_employee_id": { "id": 1316, "name": "QA - Digital Consent Employee ID", "qa_paycycle_id": 5206 }
     },
     "fixedIdentifiers": {
       "line_id": "U4f3fa9982dd206de074a790764f6fe80",
