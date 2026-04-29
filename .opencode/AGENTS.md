@@ -11,6 +11,26 @@ Rules for every session in this repo. Load `.opencode/skills/qa-engineering-lead
 - Cleanup functions that touch the DB must live in `shared/db-helpers.ts`
 - No DB fallback for API failures — surface the API error
 
+## DB Safety
+
+**These SQL operations are forbidden. Never write them under any circumstances:**
+
+- `DROP TABLE` / `DROP DATABASE` / `TRUNCATE`
+- `DELETE` or `UPDATE` without a `WHERE` clause
+- `ALTER TABLE` / `CREATE TABLE` / any DDL statement
+- `GRANT` / `REVOKE`
+
+**Before writing any SQL, verify:**
+
+- `ENV` is `'dev'` or `'staging'` — if not, stop and ask
+- `WHERE` clause is scoped to specific IDs (`user_id`, `employee_id`, `company_id`) — never unscoped
+- Target table is in the known list: `users`, `employment`, `user_identity`, `user_balance`, `user_bank`, `user_provider`, `employee_profile`, `employee_profile_audit`
+- For DELETE: check if `hardDeleteEmployee()` already covers this — use it instead of a new query
+
+**If any of the above cannot be confirmed — stop and ask the user before writing or running any SQL.**
+
+See SKILL.md Section 17 for the full safe SQL checklist and rationale.
+
 ## Configuration
 
 - **Env vars**: `shared/utils/env.ts` only — never `shared/env-config.ts` (deprecated)

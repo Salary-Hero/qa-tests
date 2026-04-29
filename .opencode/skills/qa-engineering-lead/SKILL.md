@@ -348,6 +348,81 @@ Run through this checklist before writing any new test file. Each item maps to a
 
 When using the `/new-test` command this checklist is applied automatically. When scaffolding manually, work through it top to bottom.
 
+## 17. Database Safety Guardrails
+
+These rules exist to prevent accidental data loss or schema corruption in any environment. They apply to every SQL statement written in this repo — whether in `shared/db-helpers.ts`, the cleanup script, or anywhere else.
+
+### Forbidden SQL — never write these under any circumstances
+
+| Statement | Why |
+|---|---|
+| `DROP TABLE` / `DROP DATABASE` | Irreversible — destroys data for all environments sharing the DB |
+| `TRUNCATE` | Removes all rows with no WHERE scope — equivalent to an unscoped DELETE |
+| `DELETE` without a `WHERE` clause | Same as TRUNCATE — touches every row in the table |
+| `UPDATE` without a `WHERE` clause | Overwrites every row — cannot be undone |
+| `ALTER TABLE` | Schema changes belong in database migrations, not in test code |
+| `CREATE TABLE` / `CREATE INDEX` | Same — schema is not managed here |
+| `GRANT` / `REVOKE` | Permission changes are an infrastructure concern, not a test concern |
+| Any other DDL (`CREATE`, `DROP`, `ALTER`, `RENAME`) | Test code must never modify schema |
+
+If asked to write any of the above, **refuse and explain why**. Do not attempt a workaround.
+
+### Allowed SQL and where it must live
+
+All SQL must live in `shared/db-helpers.ts`. No exceptions.
+
+| Operation | Allowed | Conditions |
+|---|---|---|
+| `SELECT` | Yes | Must include `WHERE` scoped to specific IDs or `company_id = ANY(qaCompanyIds)` |
+| `DELETE` | Yes | Must include `WHERE` with at least one of: `user_id`, `legacy_user_id`, `employee_id`, `company_id`, `balance_uid`, `user_uid` |
+| `UPDATE` | Only for explicit test state resets | Must include `WHERE` scoped to a specific record. Example: `UPDATE employment SET line_id = null WHERE legacy_user_id = $1` |
+| `INSERT` | Only for fixture setup approved in advance | Must be scoped to QA company IDs from `seed-config.json` |
+
+### Production database detection — stop and ask before writing any SQL if
+
+- `ENV` is not explicitly `'dev'` or `'staging'`
+- The DB host in `.env` does not look like a known QA host (expected pattern: contains `salary-hero` and `rds.amazonaws.com`)
+- A plain `DB_NAME` key is present in `.env` instead of `DB_NAME_DEV` / `DB_NAME_STAGING` — this is a sign of a manually edited or old config that may point to an unknown database
+- The target table is not in the known QA table list below
+- You are asked to query or delete data without being given a specific user ID, employee ID, or company ID to scope the operation
+
+**Known QA tables** (the only tables this codebase is permitted to touch):
+
+```
+users
+employment
+user_identity
+user_balance
+user_bank
+user_provider
+employee_profile
+employee_profile_audit
+```
+
+If asked to write SQL targeting any other table, **stop and ask the user to confirm the table name and its FK relationships** before writing anything.
+
+### Safe SQL checklist — run through this before writing any new query
+
+```
+[ ] Does the WHERE clause include at least one scoping column?
+    (user_id / legacy_user_id / employee_id / company_id / balance_uid / user_uid)
+[ ] Is the target table in the known QA table list above?
+[ ] Is ENV explicitly 'dev' or 'staging'?
+[ ] Is the operation scoped to QA company IDs from seed-config.json — never hardcoded IDs?
+[ ] If DELETE: does hardDeleteEmployee() already cover this table?
+    If yes — call hardDeleteEmployee() instead of writing a new DELETE.
+[ ] If this touches a table not previously in db-helpers.ts:
+    Stop and ask the user to confirm the table name and FK dependencies before proceeding.
+[ ] Is this a DDL statement (DROP / TRUNCATE / ALTER / CREATE)?
+    If yes — refuse. These are never permitted in test code.
+```
+
+### What to do if unsure
+
+If there is any doubt about whether a SQL operation is safe — whether it might affect more rows than intended, touch an unknown table, or run against a non-QA database — **stop, describe what you were about to do, and ask the user to confirm** before writing or executing any SQL.
+
+Never assume it is safe to proceed. The cost of asking is zero. The cost of an unscoped DELETE on a shared RDS instance is not.
+
 ---
 
-**Last updated**: April 2026 — added Section 15 (UI tests out of scope), Section 16 (new test checklist); fixed Section 3 (DB cleanup placement with example), Section 11 (explicit divider comment ban), Section 14 (two new anti-patterns)
+**Last updated**: April 2026 — added Section 15 (UI tests out of scope), Section 16 (new test checklist), Section 17 (DB safety guardrails)
