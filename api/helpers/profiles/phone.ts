@@ -1,3 +1,17 @@
+/**
+ * Seed profile for phone OTP signup tests.
+ *
+ * This is the canonical reference profile — copy it as a starting point when
+ * adding a new auth method. The three parts to implement are:
+ *   1. resolveIdentifiers() — what unique data each test run needs
+ *   2. createEmployee()     — how to create the employee via the admin API
+ *   3. cleanupSteps         — how to find and hard-delete the employee after each test
+ *
+ * Usage in a test file:
+ *   const { beforeEach, afterEach, getContext } = setupSeedTeardown(phoneSignupProfile)
+ *   test.beforeEach(beforeEach)
+ *   test.afterEach(afterEach)
+ */
 import {
   buildMonthlyEmployeePayload,
   createEmployee,

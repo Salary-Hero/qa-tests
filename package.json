@@ -17,6 +17,7 @@
     "tsc": "tsc --noEmit",
     "cleanup:dev": "DOTENV_CONFIG_QUIET=true NODE_NO_WARNINGS=1 ENV=dev node_modules/.bin/tsx -r dotenv/config scripts/cleanup-test-data.ts",
     "cleanup:staging": "DOTENV_CONFIG_QUIET=true NODE_NO_WARNINGS=1 ENV=staging node_modules/.bin/tsx -r dotenv/config scripts/cleanup-test-data.ts",
+    "scaffold": "node_modules/.bin/tsx scripts/scaffold.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
