@@ -18,7 +18,7 @@
 import * as readline from 'readline'
 import { seedConfigForEnv } from '../shared/utils/seed-config'
 import { query } from '../shared/db'
-import { hardDeleteEmployee } from '../shared/db-helpers'
+import { hardDeleteEmployee, countConsentEmployeeProfiles, cleanupConsentEmployeeProfiles } from '../shared/db-helpers'
 
 const FORCE = process.argv.includes('--force')
 
@@ -32,14 +32,20 @@ type LeaftoverUser = {
   created_at: string
 }
 
-async function findLeftoverUsers(): Promise<LeaftoverUser[]> {
-  const qaCompanyIds = Object.values(seedConfigForEnv.companies)
+function getQaCompanyIds(): number[] {
+  const ids = Object.values(seedConfigForEnv.companies)
     .map((c) => c.id)
     .filter((id) => id > 0)
 
-  if (qaCompanyIds.length === 0) {
+  if (ids.length === 0) {
     throw new Error('No QA company IDs configured for this environment')
   }
+
+  return ids
+}
+
+async function findLeftoverUsers(): Promise<LeaftoverUser[]> {
+  const qaCompanyIds = getQaCompanyIds()
 
   const { rows } = await query<LeaftoverUser>(
     `SELECT
@@ -132,9 +138,7 @@ async function confirm(question: string): Promise<boolean> {
  * Scoping to QA company IDs prevents accidental deletion of non-QA rows.
  */
 async function cleanupOrphanedUserProviders(): Promise<void> {
-  const qaCompanyIds = Object.values(seedConfigForEnv.companies)
-    .map((c) => c.id)
-    .filter((id) => id > 0)
+  const qaCompanyIds = getQaCompanyIds()
 
   // Build one LIKE pattern per QA company: '{company_id}-EMP%'
   // Matches both EMPAPI (new) and EMP (legacy) prefixed employee IDs.
@@ -158,9 +162,30 @@ async function cleanupOrphanedUserProviders(): Promise<void> {
   }
 }
 
+async function handleConsentProfileCleanup(qaCompanyIds: number[], force: boolean): Promise<void> {
+  console.log('\nScanning consent employee_profile rows (EMPAPI-CONSENT-*)...')
+
+  const count = await countConsentEmployeeProfiles(qaCompanyIds)
+
+  if (count === 0) {
+    console.log('No consent employee_profile rows found.')
+    return
+  }
+
+  if (!force) {
+    console.log(`Found ${count} consent employee_profile row(s) — run with --force to delete.`)
+    return
+  }
+
+  const { profilesDeleted, auditRowsDeleted } = await cleanupConsentEmployeeProfiles(qaCompanyIds)
+  console.log(`Cleaned up ${profilesDeleted} employee_profile row(s) and ${auditRowsDeleted} audit row(s).`)
+}
+
 async function main(): Promise<void> {
   const ENV = process.env.ENV ?? 'dev'
   console.log(`\nQA test data cleanup — ENV: ${ENV}\n`)
+
+  const qaCompanyIds = getQaCompanyIds()
 
   console.log('Scanning for leftover test employees...')
   const users = await findLeftoverUsers()
@@ -168,6 +193,7 @@ async function main(): Promise<void> {
   if (users.length === 0) {
     console.log('No leftover test employees found.')
     await cleanupOrphanedUserProviders()
+    await handleConsentProfileCleanup(qaCompanyIds, FORCE)
     process.exit(0)
   }
 
@@ -202,6 +228,7 @@ async function main(): Promise<void> {
 
   // Always clean up orphaned user_provider rows, even if some employees failed to delete
   await cleanupOrphanedUserProviders()
+  await handleConsentProfileCleanup(qaCompanyIds, FORCE)
 
   if (errors.length > 0) {
     console.log(`\n${errors.length} error(s) — the following users were not deleted:`)

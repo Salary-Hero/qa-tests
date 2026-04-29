@@ -151,6 +151,62 @@ export async function getEmployeeConsentStatus(
   return rows[0]?.consent_status ?? null
 }
 
+/**
+ * Returns the count of employee_profile rows for consent fixture employees
+ * (employee_id LIKE 'EMPAPI-CONSENT-%') scoped to the given company IDs.
+ *
+ * Used in preview mode to report how many rows would be deleted without
+ * actually deleting them.
+ */
+export async function countConsentEmployeeProfiles(companyIds: number[]): Promise<number> {
+  const { rows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+     FROM employee_profile
+     WHERE employee_id LIKE 'EMPAPI-CONSENT-%'
+       AND company_id = ANY($1::int[])`,
+    [companyIds]
+  )
+  return parseInt(rows[0]?.count ?? '0', 10)
+}
+
+/**
+ * Hard-deletes employee_profile and employee_profile_audit rows for consent
+ * fixture employees (employee_id LIKE 'EMPAPI-CONSENT-%') scoped to the given
+ * company IDs.
+ *
+ * Purpose: reset import state so the digital consent import flow can be re-run
+ * from scratch. Deletes profile rows regardless of whether a matching user
+ * exists — the import worker creates these rows independently of user sign-up.
+ *
+ * Audit rows must be deleted first (FK constraint:
+ * employee_profile_audit → employee_profile).
+ */
+export async function cleanupConsentEmployeeProfiles(
+  companyIds: number[]
+): Promise<{ profilesDeleted: number; auditRowsDeleted: number }> {
+  const auditResult = await query(
+    `DELETE FROM employee_profile_audit
+     WHERE employee_profile_id IN (
+       SELECT id FROM employee_profile
+       WHERE employee_id LIKE 'EMPAPI-CONSENT-%'
+         AND company_id = ANY($1::int[])
+     )`,
+    [companyIds]
+  )
+
+  const profileResult = await query(
+    `DELETE FROM employee_profile
+     WHERE employee_id LIKE 'EMPAPI-CONSENT-%'
+       AND company_id = ANY($1::int[])`,
+    [companyIds]
+  )
+
+  return {
+    profilesDeleted: profileResult.rowCount ?? 0,
+    auditRowsDeleted: auditResult.rowCount ?? 0,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Employee / User helpers
 // ---------------------------------------------------------------------------
