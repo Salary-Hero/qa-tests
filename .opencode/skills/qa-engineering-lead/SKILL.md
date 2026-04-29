@@ -202,10 +202,11 @@ const body = await response.json() as OtpResponse
 
 ```
 employee_profile_audit → employee_profile → employment
-→ user_identity → user_balance → user_bank → user_provider → users
+→ user_identity → user_balance → user_bank → user_provider → company_user_sites → users
 ```
 
 - `user_provider` has **no FK constraint to `users`** — it is not cascaded automatically. `hardDeleteEmployee()` deletes it explicitly. Never assume it is handled by cascade.
+- `company_user_sites` has a **FK constraint to `users`** — rows must be deleted before the `users` row or the delete will fail with a FK violation. `hardDeleteEmployee()` handles this.
 - The only exception: the DELETE CRUD test case itself must use `deleteEmployeeViaAPI` to test the API endpoint, followed immediately by `hardDeleteEmployee` to clear paycycle constraints.
 - `deleteEmployee()` in `api/helpers/employee.ts` and `deleteEmployeeViaAPI()` in `shared/employee-api.ts` are kept solely for testing the soft-delete API behaviour. Never use them for routine cleanup.
 - `deleteEmployeeProfileRecords()` in `shared/db-helpers.ts` is for digital consent import cleanup only.
@@ -397,6 +398,7 @@ user_bank
 user_provider
 employee_profile
 employee_profile_audit
+company_user_sites
 ```
 
 If asked to write SQL targeting any other table, **stop and ask the user to confirm the table name and its FK relationships** before writing anything.

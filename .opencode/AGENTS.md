@@ -24,7 +24,7 @@ Rules for every session in this repo. Load `.opencode/skills/qa-engineering-lead
 
 - `ENV` is `'dev'` or `'staging'` — if not, stop and ask
 - `WHERE` clause is scoped to specific IDs (`user_id`, `employee_id`, `company_id`) — never unscoped
-- Target table is in the known list: `users`, `employment`, `user_identity`, `user_balance`, `user_bank`, `user_provider`, `employee_profile`, `employee_profile_audit`
+- Target table is in the known list: `users`, `employment`, `user_identity`, `user_balance`, `user_bank`, `user_provider`, `employee_profile`, `employee_profile_audit`, `company_user_sites`
 - For DELETE: check if `hardDeleteEmployee()` already covers this — use it instead of a new query
 
 **If any of the above cannot be confirmed — stop and ask the user before writing or running any SQL.**

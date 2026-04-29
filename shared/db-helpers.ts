@@ -240,7 +240,8 @@ export async function cleanupConsentEmployeeProfiles(
  *   6. user_balance
  *   7. user_bank
  *   8. user_provider  (no FK to users — must delete explicitly, not cascaded)
- *   9. users
+ *   9. company_user_sites  (FK → users — must delete before users)
+ *  10. users
  *
  * All statements run inside a single transaction — partial cleanup is never
  * left behind if one statement fails.
@@ -311,6 +312,12 @@ export async function hardDeleteEmployee(userId: string): Promise<void> {
     // user_provider — no FK constraint to users, deletion is not cascaded automatically
     await client.query(
       `DELETE FROM user_provider WHERE user_id = $1::bigint`,
+      [numericId]
+    )
+
+    // company_user_sites — FK → users, must be deleted before users
+    await client.query(
+      `DELETE FROM company_user_sites WHERE user_id = $1::bigint`,
       [numericId]
     )
 
