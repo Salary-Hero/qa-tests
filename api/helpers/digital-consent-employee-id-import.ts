@@ -126,7 +126,11 @@ export async function importDigitalConsentEmployeeIdData(
   const previewBody = await previewResponse.json()
   validateSchema(previewBody, ImportPreviewSchema, 'Create Preview')
   if (previewBody.preview.create_num_row === 0) {
-    throw new Error(`Step 5 Create Preview: 0 rows found. File may not have been properly uploaded.`)
+    throw new Error(
+      `Step 5 Create Preview: 0 rows eligible for creation. ` +
+      `employee_profile rows for these employee IDs may already exist with a non-'new' consent_status from a previous run. ` +
+      `Ensure beforeAll cleanup (cleanupConsentEidSignedUpUsers + deleteEmployeeProfileRecords) ran successfully before the import.`
+    )
   }
 
   await new Promise((resolve) => setTimeout(resolve, 1000))

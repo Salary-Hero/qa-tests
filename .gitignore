@@ -8,7 +8,7 @@ test-results/
 .vscode/
 *.log
 *.tmp
-.opencode/plans/
+.opencode/plans/pr
 test-report.json
 yarn.lock
 package-lock.json

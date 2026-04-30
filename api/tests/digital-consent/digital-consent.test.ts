@@ -241,6 +241,37 @@ test.describe('Digital Consent', () => {
   )
 })
 
+/**
+ * Polls getEmployeeProfiles until all expected employee IDs have a row with the
+ * given consent_status. Retries every 1 second for up to 15 seconds.
+ *
+ * Used after the screening import to wait for the async import job to commit
+ * rows to employee_profile — a fixed sleep is unreliable under load.
+ */
+async function pollForConsentEidProfiles(
+  employeeIds: string[],
+  companyId: number,
+  expectedStatus: string,
+  timeoutMs = 15000,
+  intervalMs = 1000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const rows = await getEmployeeProfiles(employeeIds, companyId)
+    const allReady =
+      rows.length === employeeIds.length &&
+      rows.every((r) => r.consent_status === expectedStatus)
+    if (allReady) return
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+  const rows = await getEmployeeProfiles(employeeIds, companyId)
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for employee_profile rows. ` +
+    `Expected ${employeeIds.length} rows with consent_status='${expectedStatus}', ` +
+    `got ${rows.length} rows: ${JSON.stringify(rows.map((r) => ({ id: r.employee_id, status: r.consent_status })))}`
+  )
+}
+
 test.describe('Digital Consent — Employee ID Only', () => {
   test.describe.configure({ mode: 'serial' })
 
@@ -262,7 +293,10 @@ test.describe('Digital Consent — Employee ID Only', () => {
 
     await test.step('Run 7-step Digital Consent import (employee_id only)', async () => {
       await importDigitalConsentEmployeeIdData(request, adminToken)
-      await new Promise((resolve) => setTimeout(resolve, 3000))
+    })
+
+    await test.step('Wait for employee_profile rows to be ready', async () => {
+      await pollForConsentEidProfiles(CONSENT_EID_EMPLOYEE_IDS, CONSENT_EID_COMPANY_ID, 'new')
     })
   })
 
