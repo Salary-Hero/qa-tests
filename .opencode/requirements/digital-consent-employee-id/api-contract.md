@@ -444,7 +444,7 @@ No body.
 
 **Effect:**
 - `employee_profile.consent_status` → `'approved'`
-- `users.status` → `'active'`
+- `users.status` → value of the `Status` column in the approval xlsx for that row (e.g. `'active'` or `'inactive'`)
 
 ---
 
@@ -460,7 +460,7 @@ No body.
 | Approval import | Only processes employees with `consent_status = pending_review` |
 | Identity matching | `phone` + (`national_id` or `passport_no`) in approval xlsx must match the employee's submitted consent request form |
 | Bank uniqueness | `account_no` must be globally unique across all banks in `user_bank` — duplicate causes row rejection |
-| After approval | `consent_status = approved`, `users.status = active` |
+| After approval | `consent_status = approved`, `users.status` = value of `Status` column in approval xlsx |
 | After rejection | `consent_status = rejected`, `users.status = inactive` |
 
 ---

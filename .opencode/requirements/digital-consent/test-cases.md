@@ -9,7 +9,7 @@ All tests run serially. Import (`beforeAll`) runs once before all signup tests.
 
 ## beforeAll — Import Setup
 
-Runs once before all 4 test cases.
+Runs once before all 6 test cases.
 
 | Action | Detail |
 |--------|--------|
@@ -19,7 +19,7 @@ Runs once before all 4 test cases.
 
 ## afterAll — Cleanup
 
-Runs once after all 4 test cases, regardless of pass/fail.
+Runs once after all 6 test cases, regardless of pass/fail.
 
 | Action | Detail |
 |--------|--------|
@@ -156,6 +156,100 @@ No API calls. No data created or modified.
 
 ---
 
+---
+
+## TC-CONSENT-005 · Full approve flow — national_id — consent_status = approved, users.status = active
+
+**Priority:** High | **Status:** 🔲 PLANNED | **Employee:** EMPAPI-CONSENT-001
+**Tags:** `@component` `@high` `@regression` `@guardian`
+
+**Preconditions:**
+- `EMPAPI-CONSENT-001` exists in `employee_profile` with `consent_status = 'new'`
+- Approval fixture exists at `api/fixtures/digital-consent-import-approval.xlsx`
+- Admin token obtained in `beforeAll`
+
+**Steps:**
+
+| Step | Action | Assert |
+|------|--------|--------|
+| 8 | `validateScreeningEmployee('EMPAPI-CONSENT-001', companyId)` | 200 |
+| 9 | `submitConsentRequestForm(employeeId, '2001000099000', 'national_id', companyId, phone, email)` | 200 · `ref_code` defined |
+| 10 | `verifyConsentOtp(ref_code, phone)` | 200 · `token` starts with `"ey"` |
+| 11 | Firebase `signInWithCustomToken(token)` | 200 · `refreshToken` returned |
+| 12 | Firebase `securetoken/v1/token` (pre-PIN) | 200 · `id_token` returned |
+| 13 | `createPin(idTokenPrePin)` | 200 |
+| 14 | Firebase `securetoken/v1/token` (post-PIN) | 200 |
+| 15 | `getProfile(idTokenPostPin)` | 200 · `has_pincode = true` · `consent_status` in `['pending_review', 'new']` |
+| 16 | Capture `signedUpUserId` | — |
+| 17 | `logout(idTokenPostPin)` | — |
+| 18 | `importDigitalConsentApprovalData(request, adminToken, [{ employee_id, phone, account_no }])` | All 7 steps pass · `approve_num_row = 1` |
+| 19 | DB: `getEmployeeProfiles(['EMPAPI-CONSENT-001'], companyId)` | `consent_status = 'approved'` |
+| 20 | DB: `getUserById(signedUpUserId)` | `status = 'active'` |
+
+**Key difference from standard consent signup:** `national_id` is NOT passed as an override in the approval import — it was pre-loaded from the screening fixture. Only `phone` and `account_no` are overridden at runtime.
+
+**Pass when:**
+```
+After signup (step 15):
+  profile.has_pincode = true
+  employee_profile.consent_status in ['pending_review', 'new']
+
+After approval import (steps 18–20):
+  employee_profile.consent_status = 'approved'
+  users.status = 'active'   ← driven by Status = 'active' in approval xlsx row 1
+```
+
+**Fails if:**
+- `approve_num_row = 0` — employee not in `pending_review`, or phone mismatch, or duplicate `account_no`
+- `consent_status` is not `'approved'` after import
+- `users.status` is not `'active'` after import
+
+**afterEach:** `hardDeleteEmployee(signedUpUserId)`
+
+---
+
+## TC-CONSENT-006 · Full approve flow — passport_no — consent_status = approved, users.status = inactive
+
+**Priority:** High | **Status:** 🔲 PLANNED | **Employee:** EMPAPI-CONSENT-002
+**Tags:** `@component` `@high` `@regression` `@guardian`
+
+**Preconditions:**
+- `EMPAPI-CONSENT-002` exists in `employee_profile` with `consent_status = 'new'`
+- Approval fixture exists at `api/fixtures/digital-consent-import-approval.xlsx`
+- Admin token obtained in `beforeAll`
+
+**Steps:**
+
+Identical to TC-CONSENT-005 with these differences:
+
+| Field | TC-CONSENT-005 | TC-CONSENT-006 |
+|-------|----------------|----------------|
+| `employee_id` | `"EMPAPI-CONSENT-001"` | `"EMPAPI-CONSENT-002"` |
+| `personal_id_type` | `"national_id"` | `"passport_no"` |
+| `personal_id` | `"2001000099000"` | `"TSPP1901"` |
+| `Status` in approval xlsx row | `"active"` | `"inactive"` |
+| Expected `users.status` after approval | `'active'` | `'inactive'` |
+
+**Pass when:**
+```
+After signup:
+  profile.has_pincode = true
+  employee_profile.consent_status in ['pending_review', 'new']
+
+After approval import:
+  employee_profile.consent_status = 'approved'
+  users.status = 'inactive'   ← driven by Status = 'inactive' in approval xlsx row 2
+```
+
+**Fails if:**
+- `approve_num_row = 0` — employee not in `pending_review`, or phone mismatch, or duplicate `account_no`
+- `consent_status` is not `'approved'` after import
+- `users.status` is not `'inactive'` after import
+
+**afterEach:** `hardDeleteEmployee(signedUpUserId)`
+
+---
+
 ## Test Execution Order
 
 ```
@@ -164,5 +258,7 @@ TC-CONSENT-001 → verify 4 × 'new'
 TC-CONSENT-002 → signup EMPAPI-CONSENT-001 (national_id) → verify 'pending_review' → afterEach: delete user
 TC-CONSENT-003 → signup EMPAPI-CONSENT-002 (passport_no) → verify 'pending_review' → afterEach: delete user
 TC-CONSENT-004 → DB check EMPAPI-CONSENT-003, EMPAPI-CONSENT-004 still 'new'
+TC-CONSENT-005 → signup EMPAPI-CONSENT-001 (national_id) → approval import → verify approved + active → afterEach: delete user
+TC-CONSENT-006 → signup EMPAPI-CONSENT-002 (passport_no) → approval import → verify approved + inactive → afterEach: delete user
 afterAll    → DB cleanup
 ```

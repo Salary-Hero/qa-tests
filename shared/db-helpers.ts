@@ -233,8 +233,8 @@ export async function cleanupConsentEmployeeProfiles(
  *
  * Safe delete order:
  *   1. Read user_uid + balance_uid from user_identity before any deletes
- *   2. employee_profile_audit
- *   3. employee_profile
+ *   2. employee_profile_audit  (deleted — FK constraint)
+ *   3. employee_profile        (RESET to consent_status='new', user_id=NULL — row kept for re-use)
  *   4. employment  (references user_identity.user_uid)
  *   5. user_identity  (references user_balance.balance_uid)
  *   6. user_balance
@@ -275,9 +275,18 @@ export async function hardDeleteEmployee(userId: string): Promise<void> {
       [numericId]
     )
 
-    // employee_profile — FK → employment AND users
+    // employee_profile — reset to post-import state rather than deleting.
+    // These rows are created by the screening import and are not owned by the user;
+    // deleting them would leave the employee unable to sign up again in subsequent
+    // serial tests (screening validate returns 400 with no row present).
     await client.query(
-      `DELETE FROM employee_profile WHERE user_id = $1::bigint`,
+      `UPDATE employee_profile
+       SET consent_status = 'new',
+           user_id        = NULL,
+           employment_id  = NULL,
+           updated_at     = NOW(),
+           deleted_at     = NULL
+       WHERE user_id = $1::bigint`,
       [numericId]
     )
 

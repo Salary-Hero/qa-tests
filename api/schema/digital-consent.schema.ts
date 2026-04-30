@@ -133,3 +133,21 @@ export const ConsentVerifyFormSchema = z.object({
     }),
   }),
 })
+
+// --- Shared TypeScript interfaces ---
+
+/**
+ * Override values for a single row in an approval xlsx.
+ * Required because the approval import API validates that phone and
+ * national_id/passport_no exactly match the values the employee submitted
+ * during their consent request form signup — these values are generated
+ * dynamically per test run.
+ */
+export interface ApprovalRowOverride {
+  employee_id: string
+  phone: string
+  national_id?: string
+  passport_no?: string
+  /** Override bank account number to avoid uniqueness collisions. */
+  account_no: string
+}

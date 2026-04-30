@@ -1,3 +1,19 @@
+/**
+ * Approval import pipeline helper for the standard Digital Consent company
+ * (employee_id + national_id/passport_no pre-loaded from screening fixture).
+ *
+ * Runs the 7-step approval import (steps 15–21) using /v3/admin/account/employee-import/.
+ *
+ * Key difference from the Employee ID Only approval helper:
+ * - national_id/passport_no are pre-loaded from the screening fixture and fixed in the
+ *   approval xlsx — they do NOT need to be overridden at runtime.
+ * - Only `phone` and `account_no` are generated dynamically per test run and must be
+ *   passed as row overrides so they match the consent request form submission.
+ *
+ * Step 15 uses native fetch (not Playwright request context) because
+ * playwright.config extraHTTPHeaders sets Content-Type: application/json globally,
+ * which conflicts with the multipart/form-data boundary required for file upload.
+ */
 import { APIRequestContext } from '@playwright/test'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -15,31 +31,21 @@ import {
 
 export type { ApprovalRowOverride }
 
-const FIXTURE_PATH = path.resolve(__dirname, '../fixtures/digital-consent-employee-id-import-approval.xlsx')
+const FIXTURE_PATH = path.resolve(__dirname, '../fixtures/digital-consent-import-approval.xlsx')
 
-const COMPANY = getCompany('digital_consent_employee_id')
+const COMPANY = getCompany('digital_consent')
 
 /**
- * Runs the full 7-step approval import pipeline for the "Employee ID only"
- * digital consent company (steps 15–21 in the Postman collection).
+ * Runs the full 7-step approval import pipeline for the standard Digital Consent
+ * company (steps 15–21 in the Postman collection).
  *
  * Uses /v3/admin/account/employee-import/ endpoints with approve_action: true.
- * This pipeline submits an xlsx containing full employee data and matches against
- * the employee's submitted consent request form.
- *
- * Validation enforced by the API during preview/validate steps:
- * - phone + national_id or passport_no must match the submitted consent request form
- * - account_no must be globally unique in user_bank
  *
  * When `rowOverrides` is provided, the xlsx is built in-memory so that
- * dynamic signup values (phone, national_id generated per test run) are written
- * into the file — without overrides the static fixture at FIXTURE_PATH is used.
- *
- * Step 15 uses native fetch (not Playwright request context) because
- * playwright.config extraHTTPHeaders sets Content-Type: application/json globally,
- * which conflicts with the multipart/form-data boundary required for file upload.
+ * dynamic per-run values (phone, account_no) are written into the file.
+ * If no overrides are given, the static fixture at FIXTURE_PATH is used as-is.
  */
-export async function importDigitalConsentEmployeeIdApprovalData(
+export async function importDigitalConsentApprovalData(
   request: APIRequestContext,
   adminToken: string,
   rowOverrides?: ApprovalRowOverride[]
@@ -63,7 +69,7 @@ export async function importDigitalConsentEmployeeIdApprovalData(
     new Blob([fileBuffer], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     }),
-    'digital-consent-employee-id-import-approval.xlsx'
+    'digital-consent-import-approval.xlsx'
   )
 
   const createFetchResponse = await fetch(`${apiHost}${endpoints.consent.approvalImportCreateJob}`, {
@@ -231,18 +237,18 @@ export async function importDigitalConsentEmployeeIdApprovalData(
 
 /**
  * Builds an approval xlsx in-memory from the static fixture, applying per-row
- * overrides for phone, national_id, passport_no, and account_no.
+ * overrides for phone and account_no (and optionally national_id/passport_no).
  *
- * The fixture's static rows are used as a base so all other columns (salary,
- * bank name, address, etc.) remain valid. Only the identity-sensitive and
- * bank-uniqueness-sensitive fields are replaced with values from the override.
+ * For the standard consent company, national_id/passport_no are pre-loaded from
+ * the screening fixture and are already correct in the static xlsx — only phone
+ * and account_no need to be overridden per test run to match the consent form
+ * submission and avoid bank uniqueness collisions.
  */
 async function buildApprovalXlsx(overrides: ApprovalRowOverride[]): Promise<ArrayBuffer> {
   const wb = new ExcelJS.Workbook()
   await wb.xlsx.readFile(FIXTURE_PATH)
   const ws = wb.worksheets[0]
 
-  // Build a map of column index by header name (row 1)
   const headerRow = ws.getRow(1)
   const colIndex: Record<string, number> = {}
   headerRow.eachCell((cell, colNumber) => {

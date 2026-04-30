@@ -3,6 +3,7 @@ import { getAdminToken } from '../../helpers/admin-console-auth'
 import { importDigitalConsentData } from '../../helpers/digital-consent-import'
 import { importDigitalConsentEmployeeIdData } from '../../helpers/digital-consent-employee-id-import'
 import { importDigitalConsentEmployeeIdApprovalData } from '../../helpers/digital-consent-employee-id-approval-import'
+import { importDigitalConsentApprovalData } from '../../helpers/digital-consent-approval-import'
 import {
   resolvePhone,
   generateEmail,
@@ -74,7 +75,10 @@ test.describe('Digital Consent', () => {
 
     await test.step('Run 7-step Digital Consent import', async () => {
       await importDigitalConsentData(request, adminToken)
-      await new Promise((resolve) => setTimeout(resolve, 3000))
+    })
+
+    await test.step('Wait for employee_profile rows to be ready', async () => {
+      await pollForEmployeeProfiles(CONSENT_EMPLOYEE_IDS, CONSENT_COMPANY_ID, 'new')
     })
   })
 
@@ -239,16 +243,168 @@ test.describe('Digital Consent', () => {
       })
     }
   )
+
+  test(
+    'API – Digital Consent – Signup with national_id then approval import – consent_status = approved, users.status = active',
+    { tag: ['@component', '@high', '@regression', '@guardian'] },
+    async ({ request }) => {
+      const employee = CONSENT_EMPLOYEES[0]
+      const phone = resolvePhone()
+      const email = generateEmail()
+      const accountNo = generateAccountNo()
+      let refCode: string
+      let firebaseCustomToken: string
+      let firebaseRefreshToken: string
+      let idTokenPrePin: string
+      let idTokenPostPin: string
+
+      await test.step('Validate screening identity (national_id)', async () => {
+        await validateScreeningIdentity(request, employee.employee_id, employee.national_id, 'national_id', CONSENT_COMPANY_ID)
+      })
+
+      await test.step('Submit consent request form with national_id', async () => {
+        refCode = await submitConsentRequestForm(request, employee.employee_id, employee.national_id, 'national_id', CONSENT_COMPANY_ID, phone, email)
+      })
+
+      await test.step('Verify OTP', async () => {
+        firebaseCustomToken = await verifyConsentOtp(request, refCode, phone)
+      })
+
+      await test.step('Firebase sign in with custom token', async () => {
+        const result = await firebaseSignIn(request, firebaseCustomToken)
+        firebaseRefreshToken = result.refreshToken
+      })
+
+      await test.step('Get Firebase ID token (pre-PIN)', async () => {
+        const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
+        idTokenPrePin = result.id_token
+      })
+
+      await test.step('Create PIN', async () => {
+        await createPin(request, idTokenPrePin)
+      })
+
+      await test.step('Get Firebase ID token (post-PIN)', async () => {
+        const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
+        idTokenPostPin = result.id_token
+      })
+
+      await test.step('Get profile — verify consent_status after signup', async () => {
+        const body = await getProfile(request, idTokenPostPin)
+        expect(body.profile.has_pincode).toBe(true)
+        expect(['pending_review', 'new']).toContain(body.employee_profile?.consent_status)
+        signedUpUserId = body.profile.user_id
+      })
+
+      await test.step('Logout', async () => {
+        await logout(request, idTokenPostPin)
+      })
+
+      await test.step('Run 7-step approval import', async () => {
+        await importDigitalConsentApprovalData(request, adminToken, [
+          { employee_id: employee.employee_id, phone, account_no: accountNo },
+        ])
+        await new Promise((resolve) => setTimeout(resolve, 3000))
+      })
+
+      await test.step('DB — verify consent_status = approved after approval import', async () => {
+        const rows = await getEmployeeProfiles([employee.employee_id], CONSENT_COMPANY_ID)
+        expect(rows.length).toBe(1)
+        expect(rows[0].consent_status).toBe('approved')
+      })
+
+      await test.step('DB — verify users.status = active after approval import', async () => {
+        const user = await getUserById(Number(signedUpUserId))
+        expect(user?.status).toBe('active')
+      })
+    }
+  )
+
+  test(
+    'API – Digital Consent – Signup with passport_no then approval import – consent_status = approved, users.status = inactive',
+    { tag: ['@component', '@high', '@regression', '@guardian'] },
+    async ({ request }) => {
+      const employee = CONSENT_EMPLOYEES[1]
+      const phone = resolvePhone()
+      const email = generateEmail()
+      const accountNo = generateAccountNo()
+      let refCode: string
+      let firebaseCustomToken: string
+      let firebaseRefreshToken: string
+      let idTokenPrePin: string
+      let idTokenPostPin: string
+
+      await test.step('Validate screening identity (passport_no)', async () => {
+        await validateScreeningIdentity(request, employee.employee_id, employee.passport_no, 'passport_no', CONSENT_COMPANY_ID)
+      })
+
+      await test.step('Submit consent request form with passport_no', async () => {
+        refCode = await submitConsentRequestForm(request, employee.employee_id, employee.passport_no, 'passport_no', CONSENT_COMPANY_ID, phone, email)
+      })
+
+      await test.step('Verify OTP', async () => {
+        firebaseCustomToken = await verifyConsentOtp(request, refCode, phone)
+      })
+
+      await test.step('Firebase sign in with custom token', async () => {
+        const result = await firebaseSignIn(request, firebaseCustomToken)
+        firebaseRefreshToken = result.refreshToken
+      })
+
+      await test.step('Get Firebase ID token (pre-PIN)', async () => {
+        const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
+        idTokenPrePin = result.id_token
+      })
+
+      await test.step('Create PIN', async () => {
+        await createPin(request, idTokenPrePin)
+      })
+
+      await test.step('Get Firebase ID token (post-PIN)', async () => {
+        const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
+        idTokenPostPin = result.id_token
+      })
+
+      await test.step('Get profile — verify consent_status after signup', async () => {
+        const body = await getProfile(request, idTokenPostPin)
+        expect(body.profile.has_pincode).toBe(true)
+        expect(['pending_review', 'new']).toContain(body.employee_profile?.consent_status)
+        signedUpUserId = body.profile.user_id
+      })
+
+      await test.step('Logout', async () => {
+        await logout(request, idTokenPostPin)
+      })
+
+      await test.step('Run 7-step approval import', async () => {
+        await importDigitalConsentApprovalData(request, adminToken, [
+          { employee_id: employee.employee_id, phone, account_no: accountNo },
+        ])
+        await new Promise((resolve) => setTimeout(resolve, 3000))
+      })
+
+      await test.step('DB — verify consent_status = approved after approval import', async () => {
+        const rows = await getEmployeeProfiles([employee.employee_id], CONSENT_COMPANY_ID)
+        expect(rows.length).toBe(1)
+        expect(rows[0].consent_status).toBe('approved')
+      })
+
+      await test.step('DB — verify users.status = inactive after approval import', async () => {
+        const user = await getUserById(Number(signedUpUserId))
+        expect(user?.status).toBe('inactive')
+      })
+    }
+  )
 })
 
 /**
  * Polls getEmployeeProfiles until all expected employee IDs have a row with the
  * given consent_status. Retries every 1 second for up to 15 seconds.
  *
- * Used after the screening import to wait for the async import job to commit
+ * Used after a screening import to wait for the async import job to commit
  * rows to employee_profile — a fixed sleep is unreliable under load.
  */
-async function pollForConsentEidProfiles(
+async function pollForEmployeeProfiles(
   employeeIds: string[],
   companyId: number,
   expectedStatus: string,
@@ -296,7 +452,7 @@ test.describe('Digital Consent — Employee ID Only', () => {
     })
 
     await test.step('Wait for employee_profile rows to be ready', async () => {
-      await pollForConsentEidProfiles(CONSENT_EID_EMPLOYEE_IDS, CONSENT_EID_COMPANY_ID, 'new')
+      await pollForEmployeeProfiles(CONSENT_EID_EMPLOYEE_IDS, CONSENT_EID_COMPANY_ID, 'new')
     })
   })
 

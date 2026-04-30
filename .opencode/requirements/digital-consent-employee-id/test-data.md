@@ -62,7 +62,7 @@ Used in TC-CONSENT-EID-005. Contains full employee data for the employees who ha
 | Province | `province` |
 | Postcode | `postcode` |
 
-**Key requirement:** The `Status` column in the approval xlsx must be `active` for the employee to be activated after approval.
+**Key requirement:** The `Status` column in the approval xlsx controls `users.status` after approval — it is set directly to the value in this column (e.g. `active` or `inactive`). The EID-only fixture has Row 1 (`EMPAPI-CONSENT-EID-001`) = `active` and Row 2 (`EMPAPI-CONSENT-EID-002`) = `inactive`.
 
 ## Validation Constraints (Approval Import)
 
