@@ -1,6 +1,6 @@
 # Test Coverage Matrix
 
-Last updated: 2026-04-28 | Passing: **17/17 (100%)** | Planned negative cases: **0/12**
+Last updated: 2026-04-30 | Passing: **17/18 (94%)** | Planned: **1** | Planned negative cases: **2/14**
 
 ## Test Cases
 
@@ -23,6 +23,7 @@ Last updated: 2026-04-28 | Passing: **17/17 (100%)** | Planned negative cases: *
 | TC-CONSENT-EID-002 | Digital Consent: Employee ID Only | Signup with national_id | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | ✅ PASS |
 | TC-CONSENT-EID-003 | Digital Consent: Employee ID Only | Signup with passport_no | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | ✅ PASS |
 | TC-CONSENT-EID-004 | Digital Consent: Employee ID Only | Non-signed-up stay consent_status = new | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | ✅ PASS |
+| TC-CONSENT-EID-005 | Digital Consent: Employee ID Only | Full approve flow — consent_status = approved, status = active | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | 🔲 PLANNED |
 
 ## Summary by Feature
 
@@ -33,8 +34,8 @@ Last updated: 2026-04-28 | Passing: **17/17 (100%)** | Planned negative cases: *
 | Signup: LINE | 1 | ✅ 1 | `@guardian` | LINE token → OTP → Firebase → PIN → profile |
 | Signup: Employee ID | 2 | ✅ 2 | `@guardian` | national_id and passport_no variants |
 | Digital Consent | 4 | ✅ 4 | `@guardian` | Company imports employee_id + national_id/passport_no |
-| Digital Consent: Employee ID Only | 4 | ✅ 4 | `@guardian` | Company imports employee_id only; user provides identity |
-| **Total** | **17** | **✅ 17** | | |
+| Digital Consent: Employee ID Only | 5 | ✅ 4 / 🔲 1 | `@guardian` | Screening import + signup (national_id, passport_no) + approval |
+| **Total** | **18** | **✅ 17 / 🔲 1** | | |
 
 ## Summary by Operation
 
@@ -88,5 +89,7 @@ These cases are designed and documented but not yet implemented. See individual 
 | TC-SIGN-NEG-005 | Signup: Phone | OTP request — invalid phone format | Medium | 🔲 PLANNED |
 | TC-SIGN-NEG-006 | Signup: Phone | Create PIN — wrong OTP token (invalid Firebase token) | High | 🔲 PLANNED |
 | TC-SIGN-NEG-007 | Signup: Phone | Full flow — duplicate signup attempt (phone already active) | High | 🔲 PLANNED |
+| TC-CONSENT-EID-NEG-001 | Digital Consent: Employee ID Only | Approval import — identity mismatch (wrong national_id) rejected | High | 🔲 PLANNED |
+| TC-CONSENT-EID-NEG-002 | Digital Consent: Employee ID Only | Approval import — duplicate bank account number rejected | High | 🔲 PLANNED |
 
 **Implementation note:** When implementing negative cases, add them to the existing test file for that feature. Each negative test still requires all four mandatory tags and full `test.step()` wrapping. Negative cases do not need a seed employee unless the scenario requires a registered phone/identity to exist first.

@@ -2,37 +2,37 @@
 
 ## Feature Overview
 
-This feature tests the digital consent signup flow for companies that configure their import file with **employee_id only** — no national_id or passport_no pre-loaded.
+This feature tests the digital consent signup and approval flow for companies that configure their import file with **employee_id only** — no national_id or passport_no pre-loaded.
 
-Unlike the standard digital consent flow where employee identity is pre-loaded from the import file, this variant requires users to **self-declare** their identity during the consent request form step.
+Unlike the standard digital consent flow where employee identity is pre-loaded from the import file, this variant requires users to **self-declare** their identity during the consent request form step. After the user submits their form, HR/admin reviews and runs an approval import to activate the employee.
 
 ## Business Purpose
 
-Allow companies to use digital consent with two configurations:
-1. **Employee ID + national ID/passport** (standard) — identity pre-loaded in import
-2. **Employee ID only** — identity provided by the employee during signup
+Allow companies to use digital consent screening with employee_id only, then approve employees by uploading a full employee data file after reviewing their submitted consent form.
 
-This test covers configuration 2.
-
-## Signup Flow
+## Full Flow
 
 ```
-1. Admin imports Excel file (employee_id only)
-   ↓ employee_profile records created with consent_status = 'new'
+Phase 1 — Screening Import (Steps 1–7)
+  Admin uploads xlsx (employee_id only)
+  ↓ employee_profile created: consent_status = 'new', users.status = 'inactive'
 
-2. User opens consent form and fills in:
-   - first_name
-   - last_name
-   - national_id OR passport_no
-   - phone number
-   - (email optional)
+Phase 2 — Employee Signup (Steps 8–14)
+  Employee opens mobile app
+  → validate employee_id exists
+  → submit consent form (first_name, last_name, national_id or passport_no, phone, email)
+  → verify OTP
+  → Firebase sign-in
+  → create PIN
+  → get profile
+  ↓ employee_profile.consent_status = 'pending_review'
+    users.status = 'inactive' (unchanged)
 
-3. System sends OTP to phone
-4. User verifies OTP → Firebase custom token issued
-5. User signs in with Firebase
-6. User creates PIN
-7. User fetches profile
-   ↓ employee_profile.consent_status = 'pending_review' or 'new'
+Phase 3 — Approval Import (Steps 15–21)
+  Admin uploads xlsx (full employee data) with approve_action = true
+  ↓ employee_profile.consent_status = 'approved'
+    users.status = 'active'
+    Employee can now use EWA service
 ```
 
 ## Company Details
@@ -42,20 +42,46 @@ This test covers configuration 2.
 | Dev | QA - Digital Consent Employee ID | 866 | 3107 |
 | Staging | QA - Digital Consent Employee ID | 1316 | 5206 |
 
+Use `getCompany('digital_consent_employee_id').id` — never hardcode the ID.
+
 ## Fixture Employees
 
 | Employee ID | Used in |
 |---|---|
-| `EMPAPI-CONSENT-EID-001` | TC-CONSENT-EID-002 (national_id signup) |
-| `EMPAPI-CONSENT-EID-002` | TC-CONSENT-EID-003 (passport_no signup) |
+| `EMPAPI-CONSENT-EID-001` | TC-CONSENT-EID-002, TC-CONSENT-EID-005 |
+| `EMPAPI-CONSENT-EID-002` | TC-CONSENT-EID-003 |
 | `EMPAPI-CONSENT-EID-003` | TC-CONSENT-EID-004 (non-signed-up check) |
 | `EMPAPI-CONSENT-EID-004` | TC-CONSENT-EID-004 (non-signed-up check) |
+
+## Documents
+
+| File | Purpose |
+|------|---------|
+| [api-contract.md](./api-contract.md) | All 21 endpoint specs (screening import + signup + approval import) |
+| [test-requirements.md](./test-requirements.md) | Objectives, scope, pass/fail criteria, risks |
+| [test-data.md](./test-data.md) | Fixtures, identifiers, consent_status transition map, cleanup strategy |
+| [test-cases.md](./test-cases.md) | TC-CONSENT-EID-001 through TC-CONSENT-EID-005 |
+
+## Quick Reference
+
+| Test ID | Operation | Status |
+|---------|-----------|--------|
+| TC-CONSENT-EID-001 | Screening import → `consent_status = new` | ✅ PASS |
+| TC-CONSENT-EID-002 | Signup with `national_id` → `consent_status = pending_review` | ✅ PASS |
+| TC-CONSENT-EID-003 | Signup with `passport_no` → `consent_status = pending_review` | ✅ PASS |
+| TC-CONSENT-EID-004 | Non-signed-up employees stay `consent_status = new` | ✅ PASS |
+| TC-CONSENT-EID-005 | Full approve flow → `consent_status = approved`, `status = active` | 🔲 PLANNED |
 
 ## Key Difference vs Standard Consent Flow
 
 | Aspect | Standard (`digital_consent`) | Employee ID Only (`digital_consent_employee_id`) |
 |---|---|---|
-| Import columns | `employee_id + national_id + passport_no` | `employee_id` only |
+| Screening import columns | `employee_id + national_id + passport_no` | `employee_id` only |
 | `screening` key in request form | `{ employee_id, personal_id }` | `{ employee_id }` only |
-| Identity in `request_form` | Not included | `national_id` or `passport_no` included |
-| Screening validate step | Required | Not applicable |
+| Identity in `request_form` | Not included | `personal_id` included by user |
+| Has approval import phase | No | Yes — steps 15–21 via `/v3/admin/account/employee-import/` |
+
+## Auth
+
+Admin Bearer token. Obtained via `getAdminToken()` from `api/helpers/admin-console-auth.ts`.
+Employee steps use Firebase ID token obtained during the signup flow.
