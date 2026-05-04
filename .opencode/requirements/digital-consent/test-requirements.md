@@ -7,7 +7,10 @@
 3. Validate that a user can complete the full Digital Consent signup flow using a **national ID** as their identity
 4. Validate that a user can complete the full Digital Consent signup flow using a **passport number** as their identity
 5. Confirm that employees who have not signed up remain at `consent_status = 'new'` — import does not affect non-participating records
-6. Ensure the test suite is fully repeatable — cleanup removes all test data so re-runs are safe
+6. Verify the 7-step approval import pipeline transitions an employee from `pending_review` to `approved` and sets `users.status` correctly
+7. Validate the approval flow for an employee who signed up with **national_id** — `users.status` set to `'active'`
+8. Validate the approval flow for an employee who signed up with **passport_no** — `users.status` set to `'inactive'`
+9. Ensure the test suite is fully repeatable — cleanup removes all test data so re-runs are safe
 
 ## Audience
 
@@ -17,7 +20,7 @@ This document is intended for QA engineers, backend developers, and product mana
 
 ### In Scope ✅
 
-- 7-step admin import pipeline (upload Excel → configure → map → preview → validate → import)
+- 7-step admin screening import pipeline (upload Excel → configure → map → preview → validate → import)
 - `employee_profile` DB state after import (`consent_status = 'new'`)
 - Consent signup using `personal_id_type: "national_id"`
 - Consent signup using `personal_id_type: "passport_no"`
@@ -25,13 +28,18 @@ This document is intended for QA engineers, backend developers, and product mana
 - PIN creation and profile verification post-signup
 - `employee_profile` DB state after signup (`consent_status = 'pending_review'`)
 - State isolation — non-signed-up employees unaffected by signup activity
+- 7-step approval import pipeline (upload approval Excel → configure → map → preview → validate → import)
+- `employee_profile.consent_status = 'approved'` after approval
+- `users.status` set to value from `Status` column in approval xlsx (`'active'` or `'inactive'`)
+- Approval validation rules: phone match, identity match, bank account uniqueness
 - Full cleanup and test repeatability
 
 ### Out of Scope ❌
 
-- `update_action` and `delete_action` import modes (only `create_action: true` tested)
+- `update_action` and `delete_action` import modes (only `create_action: true` tested for screening)
 - Import validation errors (wrong column headers, missing fields, duplicate data)
-- Consent approval workflow (HR reviewing `pending_review` records)
+- Admin approval rejection flow (`consent_status = 'rejected'`)
+- Admin manual status transitions (`pending_review → disabled`, `pending_review → pending_update`)
 - Staging and production environments (TBD — company IDs not yet configured)
 - UI/frontend flows
 - Performance or load testing
@@ -77,6 +85,22 @@ A test **passes** when:
 A test **fails** if:
 - Any non-signed-up employee has a status other than `'new'`
 
+### Approval Phase (TC-CONSENT-005, TC-CONSENT-006)
+
+A test **passes** when:
+1. Full signup completes successfully (same criteria as signup phase above)
+2. All 7 approval import steps return HTTP 200
+3. Step 19 preview response has `approve_num_row > 0`
+4. Steps 20 and 21 return `{ "message": "success" }`
+5. DB confirms `employee_profile.consent_status = 'approved'`
+6. DB confirms `users.status` matches the `Status` column value in the approval xlsx
+
+A test **fails** if:
+- Signup phase fails at any step
+- `approve_num_row = 0` (phone mismatch, identity mismatch, duplicate bank account, or employee not in `pending_review`)
+- `consent_status` is not `'approved'` after import
+- `users.status` does not match the expected value from the approval xlsx `Status` column
+
 ## Risks
 
 | Risk | Impact | Mitigation |
@@ -86,21 +110,24 @@ A test **fails** if:
 | Phone or email collision in signup request form | 🟡 409 on request form step | Generate fresh phone and email per test run |
 | Firebase `TOKEN_EXPIRED` during signup | 🟡 Flaky test failure | Transient — re-run the test |
 | Company 514 missing `digital_consent` addon | 🔴 Screening validate returns 400 | Verify addon is enabled in DEV environment before running |
-| Excel column headers don't match mapping config | 🔴 Import preview shows 0 rows | Column headers in fixture must exactly match: `"Employee ID"`, `"National ID"`, `"Passport No"` |
-| TC-CONSENT-002 or TC-CONSENT-003 leaves a signed-up user | 🟡 Phone/email unique constraint on re-run | `afterEach` deletes user via admin API |
+| Excel column headers don't match mapping config | 🔴 Import preview shows 0 rows | Column headers in screening fixture must match: `"Employee ID"`, `"National ID"`, `"Passport No"` |
+| TC-CONSENT-002 or TC-CONSENT-003 leaves a signed-up user | 🟡 Phone/email unique constraint on re-run | `afterEach` hard-deletes user and resets `employee_profile` row |
+| Approval import `approve_num_row = 0` due to phone mismatch | 🔴 TC-CONSENT-005 or TC-CONSENT-006 fails | `phone` generated during signup is passed as override to `importDigitalConsentApprovalData` |
+| Approval import `approve_num_row = 0` due to duplicate `account_no` | 🔴 TC-CONSENT-005 or TC-CONSENT-006 fails | `account_no` is generated fresh per test run via `generateAccountNo()` |
+| `users.status` assertion wrong after approval | 🟡 Test fails if `Status` column in fixture doesn't match assertion | Fixture `Status` column and test assertion must be kept in sync |
 
 ## Execution
 
 ```bash
 # Run all Digital Consent tests
-npm run test:api -- api/tests/digital-consent/digital-consent.test.ts
+yarn test:api api/tests/digital-consent/digital-consent.test.ts
 
 # Run a single test by name
-npm run test:api -- api/tests/digital-consent/digital-consent.test.ts --grep "TC-CONSENT-002"
+yarn test:api api/tests/digital-consent/digital-consent.test.ts --grep "TC-CONSENT-005"
 ```
 
-Tests run serially (`test.describe.configure({ mode: 'serial' })`).  
-Expected total time: 60–90 seconds.
+Tests run serially (`test.describe.configure({ mode: 'serial' })`).
+Expected total time: 90–120 seconds (includes approval import processing time).
 
 ## Dependencies
 
@@ -108,4 +135,5 @@ Expected total time: 60–90 seconds.
 - `FIREBASE_API_KEY_DEV` must be set in `.env`
 - `OTP` and `PINCODE` must be set in `.env`
 - Admin credentials (`ADMIN_EMAIL_DEV`, `ADMIN_PASSWORD_DEV`) must be valid
-- `api/fixtures/digital-consent-import.xlsx` must contain the 4 test rows (see [test-data.md](./test-data.md))
+- `api/fixtures/digital-consent-import.xlsx` must contain the 4 screening test rows
+- `api/fixtures/digital-consent-import-approval.xlsx` must contain the 2 approval test rows

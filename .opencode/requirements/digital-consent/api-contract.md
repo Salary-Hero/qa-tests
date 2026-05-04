@@ -397,3 +397,235 @@ WHERE employee_id = 'EMPAPI-CONSENT-001'
 - `401` - Unauthorized
 - `404` - Record not found
 - `409` - Duplicate / unique constraint violation
+
+---
+
+## Phase 3 — Approval Import Pipeline (Steps 15–21)
+
+All approval import endpoints require: `Authorization: Bearer {adminToken}`
+
+The approval import processes employees who have `consent_status = 'pending_review'`. It validates that the identity and phone in the approval xlsx match the values submitted during the employee's consent request form signup. It also validates that the bank account number is globally unique.
+
+`users.status` after approval is set to the value of the `Status` column in the approval xlsx — either `'active'` or `'inactive'`. This is determined by the HR/admin who prepares the approval file.
+
+---
+
+### Step 15 — Create Approval Import Job
+
+**`POST /api/v3/admin/account/employee-import/jobs`**
+
+**Body:** `multipart/form-data`
+
+| Field | Value |
+|-------|-------|
+| `company_id` | `514` |
+| `is_include_child_company` | `"false"` |
+| `all_pay_cycle_ids` | `"true"` |
+| `pay_cycle_ids[0]` | `"null"` |
+| `pay_cycle_ids[1]` | paycycle ID for company (from `getCompany('digital_consent').qa_paycycle_id`) |
+| `file` | approval `.xlsx` file attachment |
+
+**Note:** This step must use native `fetch` (not Playwright `request` context) because Playwright's global `Content-Type: application/json` header conflicts with the `multipart/form-data` boundary.
+
+**Response (200):**
+```json
+{
+  "job_id": "4793",
+  "company_id": 514,
+  "status": "configure",
+  "config": {
+    "approve_action": false,
+    "create_action": false,
+    "update_action": false,
+    "delete_action": false,
+    "identifier": "employee_id",
+    "update_columns": []
+  }
+}
+```
+
+**Key assertion:** `job_id` exists — capture for all subsequent approval import steps.
+
+---
+
+### Step 16 — Configure Approval Import
+
+**`PUT /api/v3/admin/account/employee-import/jobs/{job_id}`**
+
+**Body:**
+```json
+{
+  "config": {
+    "approve_action": true,
+    "create_action": false,
+    "update_action": false,
+    "delete_action": false,
+    "identifier": "employee_id",
+    "date_format": "DD/MM/YYYY",
+    "hired_date_format": "DD/MM/YYYY",
+    "update_columns": [],
+    "is_include_child_company": false,
+    "include_company_ids": []
+  }
+}
+```
+
+**Key assertion:** `config.approve_action = true`
+
+---
+
+### Step 17 — Map Approval Excel Columns
+
+**`PUT /api/v3/admin/account/employee-import/{company_id}/mapping`**
+
+Maps internal API field names to the 30 column headers in the approval Excel file.
+
+**Body:**
+```json
+{
+  "data": {
+    "employee_id": "Employee ID",
+    "disbursement_type": "Disbursement Type",
+    "bank_alias": "Bank Name",
+    "account_no": "Bank Account Number",
+    "account_name": "Bank Account Name",
+    "promptpay_type": null,
+    "promptpay_id": null,
+    "first_name": "First Name",
+    "middle_name": "Middle Name",
+    "last_name": "Last Name",
+    "phone": "Mobile",
+    "salary_type": "Salary Type",
+    "salary": "Salary",
+    "hired_date": null,
+    "paycycle_code": "Pay Cycle Code",
+    "paycycle_name": "Pay Cycle Name",
+    "email": "Email",
+    "national_id": "National ID",
+    "passport_no": "Passport No",
+    "status": "Status",
+    "is_blacklist": null,
+    "birthday_at": "Date Of Birth",
+    "street_address": "Detail Address",
+    "district": "District",
+    "sub_district": "Sub District",
+    "province": "Province",
+    "postcode": "Postcode",
+    "department": "Department",
+    "line_id": "Line ID",
+    "company_site": "Company Site",
+    "deduction_type": "Deduction Type",
+    "deduction": "Deduction"
+  },
+  "update_columns": [],
+  "company_column_name": null,
+  "company_mapping": {}
+}
+```
+
+---
+
+### Step 18 — Re-confirm Config After Mapping
+
+**`PUT /api/v3/admin/account/employee-import/jobs/{job_id}`**
+
+Same body as Step 16. Required again after column mapping to finalise the config.
+
+---
+
+### Step 19 — Generate Approval Preview
+
+**`POST /api/v3/admin/account/employee-import/jobs/{job_id}/preview`**
+
+**Body:** None
+
+**Response (200):**
+```json
+{
+  "job_id": "4793",
+  "company_id": 514,
+  "status": "preview",
+  "config": { "approve_action": true, "..." },
+  "preview": {
+    "approve_rows": [
+      {
+        "employee_id": "EMPAPI-CONSENT-001",
+        "first_name": "QA",
+        "last_name": "Consent",
+        "phone": "08xxxxxxxx",
+        "national_id": 2001000099000,
+        "status": "active",
+        "salary": 30000,
+        "bank_alias": "SCB",
+        "account_no": "1xxxxxxxxx",
+        "user_id": "1263406"
+      }
+    ],
+    "create_rows": [],
+    "update_rows": [],
+    "delete_rows": [],
+    "approve_num_row": 1,
+    "create_num_row": 0,
+    "update_num_row": 0,
+    "delete_num_row": 0
+  }
+}
+```
+
+**Key assertion:** `approve_num_row > 0`
+
+**Validation rules enforced during this step:**
+
+| Rule | Detail | Consequence if violated |
+|------|--------|------------------------|
+| Phone match | `phone` in approval xlsx must exactly match the phone submitted in the employee's consent request form | Row rejected — `approve_num_row = 0` |
+| Identity match | `national_id` in approval xlsx must match the value submitted during signup (for national_id employees) | Row rejected |
+| Identity match | `passport_no` in approval xlsx must match the value submitted during signup (for passport_no employees) | Row rejected |
+| Bank uniqueness | `account_no` must be globally unique across all banks in `user_bank` | Row rejected |
+| Consent status | Employee must have `consent_status = 'pending_review'` to be eligible | Row not included in `approve_rows` |
+
+---
+
+### Step 20 — Validate Approval
+
+**`POST /api/v3/admin/account/employee-import/jobs/{job_id}/validate`**
+
+**Body:** None
+
+**Response (200):**
+```json
+{ "message": "success" }
+```
+
+---
+
+### Step 21 — Confirm Approval Import
+
+**`POST /api/v3/admin/account/employee-import/jobs/{job_id}/import`**
+
+**Body:** None
+
+**Response (200):**
+```json
+{ "message": "success" }
+```
+
+**Effect:**
+- `employee_profile.consent_status` → `'approved'`
+- `users.status` → value of `Status` column in approval xlsx (`'active'` or `'inactive'`)
+
+The `Status` column in the approval xlsx is set by the HR/admin who prepares the file. It controls whether the employee becomes fully active on the platform or remains inactive pending further steps.
+
+---
+
+## Approval Import Validation Rules
+
+| Constraint | Rule | Consequence |
+|---|---|---|
+| Phone match | `phone` in xlsx must exactly match the phone the employee submitted in their consent request form | Row rejected |
+| Identity match (national_id) | If employee submitted `national_id` during signup, the `national_id` in xlsx must match | Row rejected |
+| Identity match (passport_no) | If employee submitted `passport_no` during signup, the `passport_no` in xlsx must match | Row rejected |
+| Bank account uniqueness | `account_no` must be globally unique across all banks in `user_bank` | Row rejected |
+| Consent status | Employee must have `consent_status = 'pending_review'` | Row excluded from approval |
+
+**Key implication for test data:** In the standard consent flow, `national_id` and `passport_no` are pre-loaded from the screening import fixture and are fixed known values. Only `phone` and `account_no` need to be supplied dynamically at runtime via `buildApprovalXlsx()`. This differs from the Employee ID Only flow where identity values are user-declared and must also be overridden dynamically.

@@ -17,6 +17,7 @@
     "tsc": "tsc --noEmit",
     "cleanup:dev": "DOTENV_CONFIG_QUIET=true NODE_NO_WARNINGS=1 ENV=dev node_modules/.bin/tsx -r dotenv/config scripts/cleanup-test-data.ts",
     "cleanup:staging": "DOTENV_CONFIG_QUIET=true NODE_NO_WARNINGS=1 ENV=staging node_modules/.bin/tsx -r dotenv/config scripts/cleanup-test-data.ts",
+    "scaffold": "node_modules/.bin/tsx scripts/scaffold.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -30,6 +31,7 @@
     "typescript": "^6.0.2"
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "pg": "^8.20.0",
     "uuid": "^14.0.0",
     "zod": "^4.3.6"

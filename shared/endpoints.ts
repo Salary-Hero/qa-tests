@@ -10,7 +10,7 @@ export const endpoints = {
     searchEmployee: '/api/v2/admin/account/employee',
   },
   consent: {
-    // Admin: 7-step import pipeline
+    // Admin: 7-step import pipeline (screening)
     importCreateJob: '/api/v1/admin/account/screening-import/jobs',
     importUpdateJob: (jobId: string) =>
       `/api/v1/admin/account/screening-import/jobs/${jobId}`,
@@ -22,6 +22,19 @@ export const endpoints = {
       `/api/v1/admin/account/screening-import/jobs/${jobId}/validate`,
     importConfirm: (jobId: string) =>
       `/api/v1/admin/account/screening-import/jobs/${jobId}/import`,
+
+    // Admin: 7-step approval import pipeline (/v3/)
+    approvalImportCreateJob: '/api/v3/admin/account/employee-import/jobs',
+    approvalImportUpdateJob: (jobId: string) =>
+      `/api/v3/admin/account/employee-import/jobs/${jobId}`,
+    approvalImportMapping: (companyId: number) =>
+      `/api/v3/admin/account/employee-import/${companyId}/mapping`,
+    approvalImportPreview: (jobId: string) =>
+      `/api/v3/admin/account/employee-import/jobs/${jobId}/preview`,
+    approvalImportValidate: (jobId: string) =>
+      `/api/v3/admin/account/employee-import/jobs/${jobId}/validate`,
+    approvalImportConfirm: (jobId: string) =>
+      `/api/v3/admin/account/employee-import/jobs/${jobId}/import`,
 
     // Public: consent-specific signup (steps 8–10)
     screeningValidate: '/api/v2/public/account/consent/screening/validate',

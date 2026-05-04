@@ -2,11 +2,14 @@ import { test, expect } from '@playwright/test'
 import { getAdminToken } from '../../helpers/admin-console-auth'
 import { importDigitalConsentData } from '../../helpers/digital-consent-import'
 import { importDigitalConsentEmployeeIdData } from '../../helpers/digital-consent-employee-id-import'
+import { importDigitalConsentEmployeeIdApprovalData } from '../../helpers/digital-consent-employee-id-approval-import'
+import { importDigitalConsentApprovalData } from '../../helpers/digital-consent-approval-import'
 import {
   resolvePhone,
   generateEmail,
   generateNationalId,
   generatePassportNo,
+  generateAccountNo,
 } from '../../helpers/identifiers'
 import {
   firebaseSignIn,
@@ -27,7 +30,9 @@ import {
   cleanupConsentEidSignedUpUsers,
   deleteEmployeeProfileRecords,
   getEmployeeProfiles,
+  getUserById,
   hardDeleteEmployee,
+  pollForEmployeeProfiles,
 } from '../../../shared/db-helpers'
 import { getCompany } from '../../../shared/utils/seed-config'
 
@@ -71,7 +76,10 @@ test.describe('Digital Consent', () => {
 
     await test.step('Run 7-step Digital Consent import', async () => {
       await importDigitalConsentData(request, adminToken)
-      await new Promise((resolve) => setTimeout(resolve, 3000))
+    })
+
+    await test.step('Wait for employee_profile rows to be ready', async () => {
+      await pollForEmployeeProfiles(CONSENT_EMPLOYEE_IDS, CONSENT_COMPANY_ID, 'new')
     })
   })
 
@@ -109,12 +117,29 @@ test.describe('Digital Consent', () => {
   )
 
   test(
-    'API – Digital Consent – Signup with national_id – consent_status = pending_review',
+    'API – Digital Consent – Non-signed-up employees unaffected – consent_status = new',
+    { tag: ['@component', '@high', '@regression', '@guardian'] },
+    async () => {
+      await test.step('DB — verify EMPAPI-CONSENT-003 and EMPAPI-CONSENT-004 still have consent_status = new', async () => {
+        const nonSignedUpIds = [CONSENT_EMPLOYEES[2].employee_id, CONSENT_EMPLOYEES[3].employee_id]
+        const rows = await getEmployeeProfiles(nonSignedUpIds, CONSENT_COMPANY_ID)
+        expect(rows.length).toBe(2)
+        for (const row of rows) {
+          expect(row.consent_status).toBe('new')
+        }
+      })
+    }
+  )
+
+  test(
+    'API – Digital Consent – Signup with national_id then approval import – consent_status = approved, users.status = active',
     { tag: ['@component', '@high', '@regression', '@guardian'] },
     async ({ request }) => {
+      test.setTimeout(120000)
       const employee = CONSENT_EMPLOYEES[0]
       const phone = resolvePhone()
       const email = generateEmail()
+      const accountNo = generateAccountNo()
       let refCode: string
       let firebaseCustomToken: string
       let firebaseRefreshToken: string
@@ -125,7 +150,7 @@ test.describe('Digital Consent', () => {
         await validateScreeningIdentity(request, employee.employee_id, employee.national_id, 'national_id', CONSENT_COMPANY_ID)
       })
 
-      await test.step('Submit consent request form', async () => {
+      await test.step('Submit consent request form with national_id', async () => {
         refCode = await submitConsentRequestForm(request, employee.employee_id, employee.national_id, 'national_id', CONSENT_COMPANY_ID, phone, email)
       })
 
@@ -152,7 +177,7 @@ test.describe('Digital Consent', () => {
         idTokenPostPin = result.id_token
       })
 
-      await test.step('Get profile — verify employee_profile.consent_status', async () => {
+      await test.step('Get profile — verify consent_status after signup', async () => {
         const body = await getProfile(request, idTokenPostPin)
         expect(body.profile.has_pincode).toBe(true)
         expect(['pending_review', 'new']).toContain(body.employee_profile?.consent_status)
@@ -162,16 +187,36 @@ test.describe('Digital Consent', () => {
       await test.step('Logout', async () => {
         await logout(request, idTokenPostPin)
       })
+
+      await test.step('Run 7-step approval import', async () => {
+        await importDigitalConsentApprovalData(request, adminToken, [
+          { employee_id: employee.employee_id, phone, national_id: employee.national_id, account_no: accountNo },
+        ])
+      })
+
+      await test.step('DB — verify consent_status = approved after approval import', async () => {
+        await pollForEmployeeProfiles([employee.employee_id], CONSENT_COMPANY_ID, 'approved')
+        const rows = await getEmployeeProfiles([employee.employee_id], CONSENT_COMPANY_ID)
+        expect(rows.length).toBe(1)
+        expect(rows[0].consent_status).toBe('approved')
+      })
+
+      await test.step('DB — verify users.status = active after approval import', async () => {
+        const user = await getUserById(Number(signedUpUserId))
+        expect(user?.status).toBe('active')
+      })
     }
   )
 
   test(
-    'API – Digital Consent – Signup with passport_no – consent_status = pending_review',
+    'API – Digital Consent – Signup with passport_no then approval import – consent_status = approved, users.status = inactive',
     { tag: ['@component', '@high', '@regression', '@guardian'] },
     async ({ request }) => {
+      test.setTimeout(120000)
       const employee = CONSENT_EMPLOYEES[1]
       const phone = resolvePhone()
       const email = generateEmail()
+      const accountNo = generateAccountNo()
       let refCode: string
       let firebaseCustomToken: string
       let firebaseRefreshToken: string
@@ -182,7 +227,7 @@ test.describe('Digital Consent', () => {
         await validateScreeningIdentity(request, employee.employee_id, employee.passport_no, 'passport_no', CONSENT_COMPANY_ID)
       })
 
-      await test.step('Submit consent request form', async () => {
+      await test.step('Submit consent request form with passport_no', async () => {
         refCode = await submitConsentRequestForm(request, employee.employee_id, employee.passport_no, 'passport_no', CONSENT_COMPANY_ID, phone, email)
       })
 
@@ -209,7 +254,7 @@ test.describe('Digital Consent', () => {
         idTokenPostPin = result.id_token
       })
 
-      await test.step('Get profile — verify employee_profile.consent_status', async () => {
+      await test.step('Get profile — verify consent_status after signup', async () => {
         const body = await getProfile(request, idTokenPostPin)
         expect(body.profile.has_pincode).toBe(true)
         expect(['pending_review', 'new']).toContain(body.employee_profile?.consent_status)
@@ -219,20 +264,23 @@ test.describe('Digital Consent', () => {
       await test.step('Logout', async () => {
         await logout(request, idTokenPostPin)
       })
-    }
-  )
 
-  test(
-    'API – Digital Consent – Non-signed-up employees unaffected – consent_status = new',
-    { tag: ['@component', '@high', '@regression', '@guardian'] },
-    async () => {
-      await test.step('DB — verify EMPAPI-CONSENT-003 and EMPAPI-CONSENT-004 still have consent_status = new', async () => {
-        const nonSignedUpIds = [CONSENT_EMPLOYEES[2].employee_id, CONSENT_EMPLOYEES[3].employee_id]
-        const rows = await getEmployeeProfiles(nonSignedUpIds, CONSENT_COMPANY_ID)
-        expect(rows.length).toBe(2)
-        for (const row of rows) {
-          expect(row.consent_status).toBe('new')
-        }
+      await test.step('Run 7-step approval import', async () => {
+        await importDigitalConsentApprovalData(request, adminToken, [
+          { employee_id: employee.employee_id, phone, passport_no: employee.passport_no, account_no: accountNo },
+        ])
+      })
+
+      await test.step('DB — verify consent_status = approved after approval import', async () => {
+        await pollForEmployeeProfiles([employee.employee_id], CONSENT_COMPANY_ID, 'approved')
+        const rows = await getEmployeeProfiles([employee.employee_id], CONSENT_COMPANY_ID)
+        expect(rows.length).toBe(1)
+        expect(rows[0].consent_status).toBe('approved')
+      })
+
+      await test.step('DB — verify users.status = inactive after approval import', async () => {
+        const user = await getUserById(Number(signedUpUserId))
+        expect(user?.status).toBe('inactive')
       })
     }
   )
@@ -259,7 +307,10 @@ test.describe('Digital Consent — Employee ID Only', () => {
 
     await test.step('Run 7-step Digital Consent import (employee_id only)', async () => {
       await importDigitalConsentEmployeeIdData(request, adminToken)
-      await new Promise((resolve) => setTimeout(resolve, 3000))
+    })
+
+    await test.step('Wait for employee_profile rows to be ready', async () => {
+      await pollForEmployeeProfiles(CONSENT_EID_EMPLOYEE_IDS, CONSENT_EID_COMPANY_ID, 'new')
     })
   })
 
@@ -297,71 +348,15 @@ test.describe('Digital Consent — Employee ID Only', () => {
   )
 
   test(
-    'API – Digital Consent Employee ID Only – Signup with national_id – consent_status check',
-    { tag: ['@component', '@high', '@regression', '@guardian'] },
+    'API – Digital Consent Employee ID Only – Signup with passport_no then approval import – consent_status = approved, users.status = inactive',
+    { tag: ['@component', '@low', '@regression', '@guardian'] },
     async ({ request }) => {
-      const employeeId = CONSENT_EID_EMPLOYEE_IDS[0]
-      const phone = resolvePhone()
-      const email = generateEmail()
-      const nationalId = generateNationalId()
-      let refCode: string
-      let firebaseCustomToken: string
-      let firebaseRefreshToken: string
-      let idTokenPrePin: string
-      let idTokenPostPin: string
-
-      await test.step('Validate screening identity (employee_id only)', async () => {
-        await validateScreeningEmployee(request, employeeId, CONSENT_EID_COMPANY_ID)
-      })
-
-      await test.step('Submit consent request form with national_id', async () => {
-        refCode = await submitConsentEmployeeIdOnlyRequestForm(request, employeeId, nationalId, 'national_id', CONSENT_EID_COMPANY_ID, phone, email)
-      })
-
-      await test.step('Verify OTP', async () => {
-        firebaseCustomToken = await verifyConsentOtp(request, refCode, phone)
-      })
-
-      await test.step('Firebase sign in with custom token', async () => {
-        const result = await firebaseSignIn(request, firebaseCustomToken)
-        firebaseRefreshToken = result.refreshToken
-      })
-
-      await test.step('Get Firebase ID token (pre-PIN)', async () => {
-        const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
-        idTokenPrePin = result.id_token
-      })
-
-      await test.step('Create PIN', async () => {
-        await createPin(request, idTokenPrePin)
-      })
-
-      await test.step('Get Firebase ID token (post-PIN)', async () => {
-        const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
-        idTokenPostPin = result.id_token
-      })
-
-      await test.step('Get profile — verify employee_profile.consent_status', async () => {
-        const body = await getProfile(request, idTokenPostPin)
-        expect(body.profile.has_pincode).toBe(true)
-        expect(['pending_review', 'new']).toContain(body.employee_profile?.consent_status)
-        signedUpUserId = body.profile.user_id
-      })
-
-      await test.step('Logout', async () => {
-        await logout(request, idTokenPostPin)
-      })
-    }
-  )
-
-  test(
-    'API – Digital Consent Employee ID Only – Signup with passport_no – consent_status check',
-    { tag: ['@component', '@high', '@regression', '@guardian'] },
-    async ({ request }) => {
+      test.setTimeout(120000)
       const employeeId = CONSENT_EID_EMPLOYEE_IDS[1]
       const phone = resolvePhone()
       const email = generateEmail()
       const passportNo = generatePassportNo()
+      const accountNo = generateAccountNo()
       let refCode: string
       let firebaseCustomToken: string
       let firebaseRefreshToken: string
@@ -399,7 +394,7 @@ test.describe('Digital Consent — Employee ID Only', () => {
         idTokenPostPin = result.id_token
       })
 
-      await test.step('Get profile — verify employee_profile.consent_status', async () => {
+      await test.step('Get profile — verify consent_status after signup', async () => {
         const body = await getProfile(request, idTokenPostPin)
         expect(body.profile.has_pincode).toBe(true)
         expect(['pending_review', 'new']).toContain(body.employee_profile?.consent_status)
@@ -408,6 +403,24 @@ test.describe('Digital Consent — Employee ID Only', () => {
 
       await test.step('Logout', async () => {
         await logout(request, idTokenPostPin)
+      })
+
+      await test.step('Run 7-step approval import', async () => {
+        await importDigitalConsentEmployeeIdApprovalData(request, adminToken, [
+          { employee_id: employeeId, phone, passport_no: passportNo, account_no: accountNo },
+        ])
+      })
+
+      await test.step('DB — verify consent_status = approved after approval import', async () => {
+        await pollForEmployeeProfiles([employeeId], CONSENT_EID_COMPANY_ID, 'approved')
+        const rows = await getEmployeeProfiles([employeeId], CONSENT_EID_COMPANY_ID)
+        expect(rows.length).toBe(1)
+        expect(rows[0].consent_status).toBe('approved')
+      })
+
+      await test.step('DB — verify users.status = inactive after approval import', async () => {
+        const user = await getUserById(Number(signedUpUserId))
+        expect(user?.status).toBe('inactive')
       })
     }
   )
@@ -423,6 +436,83 @@ test.describe('Digital Consent — Employee ID Only', () => {
         for (const row of rows) {
           expect(row.consent_status).toBe('new')
         }
+      })
+    }
+  )
+
+  test(
+    'API – Digital Consent Employee ID Only – Signup then approval import – consent_status = approved, status = active',
+    { tag: ['@component', '@high', '@regression', '@guardian'] },
+    async ({ request }) => {
+      const employeeId = CONSENT_EID_EMPLOYEE_IDS[0]
+      const phone = resolvePhone()
+      const email = generateEmail()
+      const nationalId = generateNationalId()
+      const accountNo = generateAccountNo()
+      let refCode: string
+      let firebaseCustomToken: string
+      let firebaseRefreshToken: string
+      let idTokenPrePin: string
+      let idTokenPostPin: string
+
+      await test.step('Validate screening identity (employee_id only)', async () => {
+        await validateScreeningEmployee(request, employeeId, CONSENT_EID_COMPANY_ID)
+      })
+
+      await test.step('Submit consent request form with national_id', async () => {
+        refCode = await submitConsentEmployeeIdOnlyRequestForm(request, employeeId, nationalId, 'national_id', CONSENT_EID_COMPANY_ID, phone, email)
+      })
+
+      await test.step('Verify OTP', async () => {
+        firebaseCustomToken = await verifyConsentOtp(request, refCode, phone)
+      })
+
+      await test.step('Firebase sign in with custom token', async () => {
+        const result = await firebaseSignIn(request, firebaseCustomToken)
+        firebaseRefreshToken = result.refreshToken
+      })
+
+      await test.step('Get Firebase ID token (pre-PIN)', async () => {
+        const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
+        idTokenPrePin = result.id_token
+      })
+
+      await test.step('Create PIN', async () => {
+        await createPin(request, idTokenPrePin)
+      })
+
+      await test.step('Get Firebase ID token (post-PIN)', async () => {
+        const result = await firebaseRefreshTokenAPI(request, firebaseRefreshToken)
+        idTokenPostPin = result.id_token
+      })
+
+      await test.step('Get profile — verify consent_status after signup', async () => {
+        const body = await getProfile(request, idTokenPostPin)
+        expect(body.profile.has_pincode).toBe(true)
+        expect(['pending_review', 'new']).toContain(body.employee_profile?.consent_status)
+        signedUpUserId = body.profile.user_id
+      })
+
+      await test.step('Logout', async () => {
+        await logout(request, idTokenPostPin)
+      })
+
+      await test.step('Run 7-step approval import', async () => {
+        await importDigitalConsentEmployeeIdApprovalData(request, adminToken, [
+          { employee_id: employeeId, phone, national_id: nationalId, account_no: accountNo },
+        ])
+      })
+
+      await test.step('DB — verify consent_status = approved after approval import', async () => {
+        await pollForEmployeeProfiles([employeeId], CONSENT_EID_COMPANY_ID, 'approved')
+        const rows = await getEmployeeProfiles([employeeId], CONSENT_EID_COMPANY_ID)
+        expect(rows.length).toBe(1)
+        expect(rows[0].consent_status).toBe('approved')
+      })
+
+      await test.step('DB — verify users.status = active after approval import', async () => {
+        const user = await getUserById(Number(signedUpUserId))
+        expect(user?.status).toBe('active')
       })
     }
   )

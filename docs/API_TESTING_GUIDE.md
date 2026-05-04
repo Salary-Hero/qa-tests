@@ -6,6 +6,7 @@ A practical reference for QA engineers working in this codebase. No prior Playwr
 
 ## Table of Contents
 
+0. [Quick Start — Write Your First Test in 15 Minutes](#0-quick-start--write-your-first-test-in-15-minutes)
 1. [Prerequisites & Setup](#1-prerequisites--setup)
 2. [Running Tests](#2-running-tests)
 3. [Project Structure](#3-project-structure)
@@ -16,6 +17,101 @@ A practical reference for QA engineers working in this codebase. No prior Playwr
 8. [Seed & Teardown Pattern](#8-seed--teardown-pattern)
 9. [Test Naming Convention](#9-test-naming-convention)
 10. [Checklist Before Writing a New Test](#10-checklist-before-writing-a-new-test)
+
+---
+
+## 0. Quick Start — Write Your First Test in 15 Minutes
+
+This section gets you from zero to a passing test as fast as possible. It assumes you have already completed setup (section 1).
+
+### Step 1 — Copy the template
+
+```bash
+cp api/tests/_template.test.ts api/tests/signup/signup-my-feature.test.ts
+```
+
+The template file is at `api/tests/_template.test.ts`. It has `TODO` markers for every part you need to fill in.
+
+### Step 2 — Fill in the test name and tags
+
+Open your new file and update the `test.describe` label and the `test(...)` name:
+
+```typescript
+test.describe('Signup by Phone', () => {
+  ...
+  test(
+    'API – Signup Phone – Full signup flow – Success',
+    { tag: ['@component', '@high', '@smoke', '@regression', '@guardian'] },
+```
+
+Test name format: `[Type] – [Feature] – [Scenario] – [Expected Result]`
+
+All four tag groups are required. See [section 9](#9-test-naming-convention) for the full tag reference.
+
+### Step 3 — Choose your seed profile
+
+The seed profile creates a fresh employee before each test and cleans it up after. Pick the one that matches the auth method you are testing:
+
+```typescript
+// Phone OTP signup
+import { phoneSignupProfile } from '../helpers/profiles/phone'
+
+// LINE signup
+import { lineSignupProfile } from '../helpers/profiles/line'
+
+// Employee ID signup
+import { employeeIdSignupProfile } from '../helpers/profiles/employee-id'
+```
+
+Replace the profile import in your test file, then pass it to `setupSeedTeardown`:
+
+```typescript
+const { beforeEach, afterEach, getContext } = setupSeedTeardown(phoneSignupProfile)
+test.beforeEach(beforeEach)
+test.afterEach(afterEach)
+```
+
+### Step 4 — Access the seeded employee data
+
+Inside your test, call `getContext()` to get the employee that was just created:
+
+```typescript
+const ctx = getContext()
+const phone = ctx.identifiers.phone!   // the phone number seeded for this run
+const company = ctx.company            // company ID, name, paycycle ID
+```
+
+### Step 5 — Add your test steps
+
+Every action must be inside `test.step()`. The step name appears in the HTML report:
+
+```typescript
+await test.step('Request OTP', async () => {
+  refCode = await requestPhoneOtp(request, phone)
+})
+
+await test.step('Verify OTP', async () => {
+  firebaseCustomToken = await verifyPhoneOtp(request, phone, refCode)
+})
+
+await test.step('Verify result', async () => {
+  const body = await getProfile(request, idToken)
+  expect(body.profile.phone).toBe(phone)
+  expect(body.profile.has_pincode).toBe(true)
+})
+```
+
+### Step 6 — Type check and run
+
+```bash
+yarn tsc                          # must pass with zero errors before running tests
+yarn test:api --grep "My Feature" # run only your new test
+yarn report                       # open the HTML report to see step-by-step results
+```
+
+If `yarn tsc` fails, fix all errors before running tests. TypeScript errors always prevent a clean test run.
+
+That is it. The complete working example is `api/tests/signup/signup-phone.test.ts` — 69 lines, open it alongside your new file as a reference.
 
 ---
 

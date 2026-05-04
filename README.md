@@ -62,13 +62,14 @@ OTP codes are resolved automatically from `playwright.config.ts` based on `ENV`:
 | staging | `199119` |
 
 ### Database (Test Data Management)
-| Variable     | Required | Description                    |
-| ------------ | -------- | ------------------------------ |
-| `DB_HOST`    | ✓        | Database host (e.g., localhost) |
-| `DB_PORT`    | ✓        | Database port (default: 5432)  |
-| `DB_NAME`    | ✓        | Database name (e.g., showhire_dev) |
-| `DB_USER`    | ✓        | Database user                  |
-| `DB_PASSWORD`| ✓        | Database password              |
+| Variable          | Required | Description                                         |
+| ----------------- | -------- | --------------------------------------------------- |
+| `DB_HOST`         | ✓        | RDS host — shared between dev and staging           |
+| `DB_PORT`         | ✓        | Database port (default: 5432)                       |
+| `DB_NAME_DEV`     | ✓        | Dev database name                                   |
+| `DB_NAME_STAGING` | ✓        | Staging database name                               |
+| `DB_USER`         | ✓        | Database user                                       |
+| `DB_PASSWORD`     | ✓        | Database password                                   |
 
 ## Project structure
 
@@ -100,106 +101,66 @@ shared/
 
 ## Test data lifecycle (API tests)
 
-### Overview
-Tests use a dev database with reusable test company (Company ID: 128 - "QA - Phone Signup Only") and automatic cleanup of created employee records.
+Every API test follows a four-step pattern managed automatically by the seed profile system:
 
-**Pattern:**
-1. **Setup** — Create test employee under shared company using database
-2. **Test** — Call API endpoint
-3. **Verify** — Check API response and database state
-4. **Cleanup** — Delete created employee and user records (company remains intact)
+1. **Seed** — `beforeEach` creates a fresh employee under the QA test company
+2. **Test** — the test calls the API and asserts the response
+3. **Verify** — assertions check response fields and (where relevant) DB state
+4. **Cleanup** — `afterEach` hard-deletes the employee from the database
 
-### Using Test Fixtures
-
-Every API test should follow this pattern:
+### Using the seed & teardown pattern
 
 ```typescript
-import { test } from '@playwright/test';
-import { useTestContext, useTestCleanup } from '../../shared/test-fixtures';
-import { createFullEmployee } from '../../shared/test-data';
-import { TEST_COMPANY_IDS } from '../../shared/constants';
+import { test, expect } from '@playwright/test'
+import { setupSeedTeardown } from '../../helpers/test-setup'
+import { phoneSignupProfile } from '../../helpers/profiles/phone'
+import { requestPhoneOtp } from '../../helpers/phone-signup-api'
 
-test('update employee detail', async ({ request }) => {
-  // Initialize test context
-  const context = await useTestContext(TEST_COMPANY_IDS.defaultCompany);
-  const cleanup = await useTestCleanup(context);
+test.describe('Signup by Phone', () => {
+  const { beforeEach, afterEach, getContext } = setupSeedTeardown(phoneSignupProfile)
+  test.beforeEach(beforeEach)
+  test.afterEach(afterEach)
 
-  try {
-    // SETUP: Create test data
-    const employee = await createFullEmployee(
-      context,
-      TEST_COMPANY_IDS.defaultCompany,
-      {
-        firstName: 'John',
-        lastName: 'Doe',
-      }
-    );
+  test(
+    'API – Signup Phone – Full signup flow – Success',
+    { tag: ['@component', '@high', '@smoke', '@regression', '@guardian'] },
+    async ({ request }) => {
+      const ctx = getContext()
+      const phone = ctx.identifiers.phone!
 
-    // TEST: Call API
-    const response = await request.patch(
-      `/api/employees/${employee.employment_id}`,
-      { data: { firstName: 'Jane' } }
-    );
-
-    // VERIFY: Check response
-    expect(response.status()).toBe(200);
-
-  } finally {
-    // CLEANUP: Delete created records automatically
-    await cleanup();
-  }
-});
+      await test.step('Request OTP', async () => {
+        const refCode = await requestPhoneOtp(request, phone)
+        expect(refCode).toBeTruthy()
+      })
+    }
+  )
+})
 ```
 
-### Key Functions
+Key points:
+- `setupSeedTeardown(profile)` wires up `beforeEach` / `afterEach` automatically — no manual try/finally
+- `getContext()` gives you the seeded employee's `identifiers` (phone, email, employee_id) and `company`
+- `phoneSignupProfile` is one of several profiles in `api/helpers/profiles/` — one per auth method
+- Cleanup always uses hard delete so phone numbers are freed for the next run
 
-#### Test Setup
-- `useTestContext(companyId)` — Initialize test with company ID
-- `useTestCleanup(context)` — Register automatic cleanup
-- `createFullEmployee(context, companyId, options)` — Create employee under company
+See `docs/API_TESTING_GUIDE.md` for a full walkthrough, or `api/tests/_template.test.ts` for a ready-to-copy starting point.
 
-#### Test Data Helpers
-- `getCompanyById(companyId)` — Fetch company from database
-- `getEmploymentById(employmentId)` — Fetch employment record
-- `getUserById(userId)` — Fetch user record
-- `getUserIdentityByUid(userUid)` — Fetch user identity
-- `verifyEmployeeData(employmentId, expectedData)` — Verify employee data matches
+### Available seed profiles
 
-#### Cleanup Behavior
-- **Deleted:** Employee, User Identity, Legacy User records
-- **Preserved:** Company (reused across tests)
-- **Tracked:** All deleted records are logged in `test_metadata` table for audit trail
+| Profile | Auth method | Company from seed-config |
+|---|---|---|
+| `phoneSignupProfile` | Phone OTP | `getCompany('phone')` |
+| `lineSignupProfile` | LINE | `getCompany('line')` |
+| `employeeIdSignupProfile` | Employee ID + national ID | `getCompany('employee_id')` |
 
-### Creating Tests with New Company
+### Cleanup script
 
-For tests that need to create a new company (e.g., "update company" tests):
+If a test run crashes and leaves orphaned data:
 
-```typescript
-import { createTestCompanyAndData } from '../../shared/test-data';
-
-test('update company settings', async ({ request }) => {
-  const context = await useTestContext(null); // No default company
-  const cleanup = await useTestCleanup(context);
-
-  try {
-    // Create new company (will be deleted on cleanup)
-    const company = await createTestCompanyAndData(context, {
-      name: 'Test Company',
-    });
-
-    // Create employee under new company
-    const employee = await createFullEmployee(
-      context,
-      company.company_id,
-      { firstName: 'Jane', lastName: 'Doe' }
-    );
-
-    // Test and verify...
-
-  } finally {
-    await cleanup();
-  }
-});
+```bash
+yarn cleanup:dev          # preview — shows what would be deleted
+yarn cleanup:dev --force  # delete without prompting
+yarn cleanup:staging --force
 ```
 
 ## Type checking

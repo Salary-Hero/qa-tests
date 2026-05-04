@@ -136,6 +136,32 @@ export async function getEmployeeProfiles(
 }
 
 /**
+ * Resets a single employee_profile row to post-import state (consent_status='new',
+ * user_id=NULL, employment_id=NULL) by employee_id + company_id.
+ *
+ * Used in consent test afterEach cleanup for signup-only tests. After a test signs up
+ * an employee, hardDeleteEmployee() removes the users row but leaves the employee_profile
+ * row with consent_status='pending_review'. This reset ensures subsequent test runs
+ * start from a clean 'new' state rather than inheriting leftover consent state.
+ */
+export async function resetConsentEmployeeProfile(
+  employeeId: string,
+  companyId: number
+): Promise<void> {
+  await query(
+    `UPDATE employee_profile
+     SET consent_status = 'new',
+         user_id        = NULL,
+         employment_id  = NULL,
+         updated_at     = NOW(),
+         deleted_at     = NULL
+     WHERE employee_id = $1
+       AND company_id  = $2`,
+    [employeeId, companyId]
+  )
+}
+
+/**
  * Returns the consent_status for a single employee.
  * Returns null if no matching row exists.
  */
@@ -149,6 +175,62 @@ export async function getEmployeeConsentStatus(
     [employeeId, companyId]
   )
   return rows[0]?.consent_status ?? null
+}
+
+/**
+ * Returns the count of employee_profile rows for consent fixture employees
+ * (employee_id LIKE 'EMPAPI-CONSENT-%') scoped to the given company IDs.
+ *
+ * Used in preview mode to report how many rows would be deleted without
+ * actually deleting them.
+ */
+export async function countConsentEmployeeProfiles(companyIds: number[]): Promise<number> {
+  const { rows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+     FROM employee_profile
+     WHERE employee_id LIKE 'EMPAPI-CONSENT-%'
+       AND company_id = ANY($1::int[])`,
+    [companyIds]
+  )
+  return parseInt(rows[0]?.count ?? '0', 10)
+}
+
+/**
+ * Hard-deletes employee_profile and employee_profile_audit rows for consent
+ * fixture employees (employee_id LIKE 'EMPAPI-CONSENT-%') scoped to the given
+ * company IDs.
+ *
+ * Purpose: reset import state so the digital consent import flow can be re-run
+ * from scratch. Deletes profile rows regardless of whether a matching user
+ * exists — the import worker creates these rows independently of user sign-up.
+ *
+ * Audit rows must be deleted first (FK constraint:
+ * employee_profile_audit → employee_profile).
+ */
+export async function cleanupConsentEmployeeProfiles(
+  companyIds: number[]
+): Promise<{ profilesDeleted: number; auditRowsDeleted: number }> {
+  const auditResult = await query(
+    `DELETE FROM employee_profile_audit
+     WHERE employee_profile_id IN (
+       SELECT id FROM employee_profile
+       WHERE employee_id LIKE 'EMPAPI-CONSENT-%'
+         AND company_id = ANY($1::int[])
+     )`,
+    [companyIds]
+  )
+
+  const profileResult = await query(
+    `DELETE FROM employee_profile
+     WHERE employee_id LIKE 'EMPAPI-CONSENT-%'
+       AND company_id = ANY($1::int[])`,
+    [companyIds]
+  )
+
+  return {
+    profilesDeleted: profileResult.rowCount ?? 0,
+    auditRowsDeleted: auditResult.rowCount ?? 0,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -177,14 +259,15 @@ export async function getEmployeeConsentStatus(
  *
  * Safe delete order:
  *   1. Read user_uid + balance_uid from user_identity before any deletes
- *   2. employee_profile_audit
- *   3. employee_profile
+ *   2. employee_profile_audit  (deleted — FK constraint)
+ *   3. employee_profile        (RESET to consent_status='new', user_id=NULL — row kept for re-use)
  *   4. employment  (references user_identity.user_uid)
  *   5. user_identity  (references user_balance.balance_uid)
  *   6. user_balance
  *   7. user_bank
  *   8. user_provider  (no FK to users — must delete explicitly, not cascaded)
- *   9. users
+ *   9. company_user_sites  (FK → users — must delete before users)
+ *  10. users
  *
  * All statements run inside a single transaction — partial cleanup is never
  * left behind if one statement fails.
@@ -218,9 +301,18 @@ export async function hardDeleteEmployee(userId: string): Promise<void> {
       [numericId]
     )
 
-    // employee_profile — FK → employment AND users
+    // employee_profile — reset to post-import state rather than deleting.
+    // These rows are created by the screening import and are not owned by the user;
+    // deleting them would leave the employee unable to sign up again in subsequent
+    // serial tests (screening validate returns 400 with no row present).
     await client.query(
-      `DELETE FROM employee_profile WHERE user_id = $1::bigint`,
+      `UPDATE employee_profile
+       SET consent_status = 'new',
+           user_id        = NULL,
+           employment_id  = NULL,
+           updated_at     = NOW(),
+           deleted_at     = NULL
+       WHERE user_id = $1::bigint`,
       [numericId]
     )
 
@@ -258,6 +350,12 @@ export async function hardDeleteEmployee(userId: string): Promise<void> {
       [numericId]
     )
 
+    // company_user_sites — FK → users, must be deleted before users
+    await client.query(
+      `DELETE FROM company_user_sites WHERE user_id = $1::bigint`,
+      [numericId]
+    )
+
     // users — root record
     await client.query(
       `DELETE FROM users WHERE user_id = $1::bigint`,
@@ -292,4 +390,35 @@ export async function getUserById(userId: number) {
   }
 
   return result.rows[0]
+}
+
+/**
+ * Polls getEmployeeProfiles until all expected employee IDs have a row with the
+ * given consent_status. Retries every 1 second for up to 15 seconds.
+ *
+ * Used after a screening or approval import to wait for the async import job
+ * to commit rows to employee_profile — a fixed sleep is unreliable under load.
+ */
+export async function pollForEmployeeProfiles(
+  employeeIds: string[],
+  companyId: number,
+  expectedStatus: string,
+  timeoutMs = 15000,
+  intervalMs = 500
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const rows = await getEmployeeProfiles(employeeIds, companyId)
+    const allReady =
+      rows.length === employeeIds.length &&
+      rows.every((r) => r.consent_status === expectedStatus)
+    if (allReady) return
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+  const rows = await getEmployeeProfiles(employeeIds, companyId)
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for employee_profile rows. ` +
+    `Expected ${employeeIds.length} rows with consent_status='${expectedStatus}', ` +
+    `got ${rows.length} rows: ${JSON.stringify(rows.map((r) => ({ id: r.employee_id, status: r.consent_status })))}`
+  )
 }

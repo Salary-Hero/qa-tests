@@ -14,6 +14,10 @@ Load the skill at the start of every coding session in this repo:
 
 ### Never do this
 - Call `query()` outside `shared/db-helpers.ts`
+- Write `DROP`, `TRUNCATE`, `ALTER TABLE`, or any DDL SQL — ever
+- Write `DELETE` or `UPDATE` without a `WHERE` clause scoped to specific IDs
+- Write SQL targeting a table not in the known list (`users`, `employment`, `user_identity`, `user_balance`, `user_bank`, `user_provider`, `employee_profile`, `employee_profile_audit`, `company_user_sites`)
+- Touch the DB if `ENV` is not `'dev'` or `'staging'` — stop and ask first
 - Read `process.env` outside `shared/utils/env.ts`
 - Hardcode company IDs — use `getCompany('name')`
 - Use `getAdminToken()` from anywhere except `api/helpers/admin-console-auth.ts`

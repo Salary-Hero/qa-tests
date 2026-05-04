@@ -57,6 +57,53 @@ export const ImportSuccessSchema = z.object({
   message: z.string(),
 })
 
+// --- Approval import pipeline schemas (steps 15–21) ---
+
+export const ApprovalImportJobConfigSchema = z.object({
+  approve_action: z.boolean(),
+  create_action: z.boolean(),
+  update_action: z.boolean(),
+  delete_action: z.boolean(),
+  identifier: z.string(),
+  date_format: z.string().optional(),
+  hired_date_format: z.string().optional(),
+  update_columns: z.array(z.string()),
+  is_include_child_company: z.boolean().optional(),
+  include_company_ids: z.array(z.number()).optional(),
+})
+
+export const ApprovalImportJobSchema = z.object({
+  job_id: z.string(),
+  company_id: z.number(),
+  status: z.string(),
+  config: ApprovalImportJobConfigSchema,
+}).passthrough()
+
+const ApprovalPreviewRowSchema = z.object({
+  employee_id: z.string(),
+  user_id: z.string().optional(),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  status: z.string().optional(),
+}).passthrough()
+
+export const ApprovalImportPreviewSchema = z.object({
+  job_id: z.string(),
+  company_id: z.number(),
+  status: z.string(),
+  config: ApprovalImportJobConfigSchema,
+  preview: z.object({
+    approve_rows: z.array(ApprovalPreviewRowSchema),
+    create_rows: z.array(z.unknown()),
+    update_rows: z.array(z.unknown()),
+    delete_rows: z.array(z.unknown()),
+    approve_num_row: z.number(),
+    create_num_row: z.number(),
+    update_num_row: z.number(),
+    delete_num_row: z.number(),
+  }),
+}).passthrough()
+
 // --- Consent signup schemas (steps 8–10) ---
 
 // TODO: define explicit fields once the screening-validate response contract is confirmed.
@@ -86,3 +133,21 @@ export const ConsentVerifyFormSchema = z.object({
     }),
   }),
 })
+
+// --- Shared TypeScript interfaces ---
+
+/**
+ * Override values for a single row in an approval xlsx.
+ * Required because the approval import API validates that phone and
+ * national_id/passport_no exactly match the values the employee submitted
+ * during their consent request form signup — these values are generated
+ * dynamically per test run.
+ */
+export interface ApprovalRowOverride {
+  employee_id: string
+  phone: string
+  national_id?: string
+  passport_no?: string
+  /** Override bank account number to avoid uniqueness collisions. */
+  account_no: string
+}

@@ -2,7 +2,7 @@ import { APIRequestContext } from '@playwright/test'
 import * as fs from 'fs'
 import * as path from 'path'
 import { endpoints } from '../../shared/endpoints'
-import { validateSchema } from '../../shared/utils/schema'
+import { parseResponse } from '../../shared/utils/response'
 import { getCompany } from '../../shared/utils/seed-config'
 import { getApiBaseUrl } from '../../shared/utils/env'
 import {
@@ -15,6 +15,35 @@ import {
 const FIXTURE_PATH = path.resolve(__dirname, '../fixtures/digital-consent-import.xlsx')
 
 const COMPANY_ID = getCompany('digital_consent').id
+
+/**
+ * Posts to `url` and returns the response. Retries with 500ms backoff if the
+ * server responds with a non-2xx — the import pipeline processes steps
+ * asynchronously, so the next step may not be ready immediately.
+ * Throws after `maxAttempts` with the final status code and response body so
+ * the test fails immediately with a clear message rather than passing a failing
+ * response to parseResponse.
+ */
+async function retryPost(
+  request: APIRequestContext,
+  url: string,
+  headers: Record<string, string>,
+  maxAttempts = 8,
+  backoffMs = 500
+): ReturnType<APIRequestContext['post']> {
+  let last: Awaited<ReturnType<APIRequestContext['post']>>
+  for (let i = 0; i < maxAttempts; i++) {
+    last = await request.post(url, { headers })
+    if (last.ok()) return last
+    await new Promise((resolve) => setTimeout(resolve, backoffMs))
+  }
+  const body = await last!.text().catch(() => '<unreadable>')
+  throw new Error(
+    `retryPost exhausted ${maxAttempts} attempts for ${url}\n` +
+    `  Last status: ${last!.status()}\n` +
+    `  Body: ${body}`
+  )
+}
 
 /**
  * Runs the full 7-step Digital Consent import pipeline.
@@ -72,10 +101,7 @@ export async function importDigitalConsentData(
       },
     },
   })
-  if (!configResponse.ok()) {
-    throw new Error(`Step 2 Update Config failed: ${configResponse.status()} ${await configResponse.text()}`)
-  }
-  validateSchema(await configResponse.json(), ImportJobSchema, 'Update Config')
+  await parseResponse(configResponse, ImportJobSchema, 'Step 2 Update Config')
 
   // Step 3: Map Excel column headers to API fields
   const mappingResponse = await request.put(endpoints.consent.importMapping(COMPANY_ID), {
@@ -91,10 +117,7 @@ export async function importDigitalConsentData(
       company_mapping: {},
     },
   })
-  if (!mappingResponse.ok()) {
-    throw new Error(`Step 3 Mapping Column failed: ${mappingResponse.status()} ${await mappingResponse.text()}`)
-  }
-  validateSchema(await mappingResponse.json(), ImportMappingSchema, 'Mapping Column')
+  await parseResponse(mappingResponse, ImportMappingSchema, 'Step 3 Mapping Column')
 
   // Step 4: Re-confirm config after mapping
   const reConfigResponse = await request.put(endpoints.consent.importUpdateJob(jobId), {
@@ -110,50 +133,22 @@ export async function importDigitalConsentData(
       },
     },
   })
-  if (!reConfigResponse.ok()) {
-    throw new Error(`Step 4 Update Config After Mapping failed: ${reConfigResponse.status()} ${await reConfigResponse.text()}`)
-  }
-  validateSchema(await reConfigResponse.json(), ImportJobSchema, 'Update Config After Mapping')
+  await parseResponse(reConfigResponse, ImportJobSchema, 'Step 4 Update Config After Mapping')
 
-  // Brief wait to allow the server to finish processing Steps 1-4 before preview
-  await new Promise((resolve) => setTimeout(resolve, 2000))
-
-  // Step 5: Generate preview
-  const previewResponse = await request.post(endpoints.consent.importPreview(jobId), {
-    headers: authHeaders,
-  })
-  if (!previewResponse.ok()) {
-    throw new Error(`Step 5 Create Preview failed: ${previewResponse.status()} ${await previewResponse.text()}`)
-  }
-  const previewBody = await previewResponse.json()
-  validateSchema(previewBody, ImportPreviewSchema, 'Create Preview')
+  // Step 5: Generate preview — retries until the server finishes processing Steps 1–4
+  const previewResponse = await retryPost(request, endpoints.consent.importPreview(jobId), authHeaders)
+  const previewBody = await parseResponse(previewResponse, ImportPreviewSchema, 'Step 5 Create Preview')
   if (previewBody.preview.create_num_row === 0) {
     throw new Error(`Step 5 Create Preview: 0 rows found. File may not have been properly uploaded.`)
   }
 
-  // Brief wait to allow preview processing to settle before validate
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  // Step 6: Validate — retries until preview processing settles
+  const validateResponse = await retryPost(request, endpoints.consent.importValidate(jobId), authHeaders)
+  await parseResponse(validateResponse, ImportSuccessSchema, 'Step 6 Validate')
 
-  // Step 6: Validate
-  const validateResponse = await request.post(endpoints.consent.importValidate(jobId), {
-    headers: authHeaders,
-  })
-  if (!validateResponse.ok()) {
-    throw new Error(`Step 6 Validate failed: ${validateResponse.status()} ${await validateResponse.text()}`)
-  }
-  validateSchema(await validateResponse.json(), ImportSuccessSchema, 'Validate')
-
-  // Brief wait to allow validation processing to settle before confirm
-  await new Promise((resolve) => setTimeout(resolve, 1000))
-
-  // Step 7: Confirm import
-  const importResponse = await request.post(endpoints.consent.importConfirm(jobId), {
-    headers: authHeaders,
-  })
-  if (!importResponse.ok()) {
-    throw new Error(`Step 7 Confirm Import failed: ${importResponse.status()} ${await importResponse.text()}`)
-  }
-  validateSchema(await importResponse.json(), ImportSuccessSchema, 'Confirm Import')
+  // Step 7: Confirm import — retries until validation processing settles
+  const importResponse = await retryPost(request, endpoints.consent.importConfirm(jobId), authHeaders)
+  await parseResponse(importResponse, ImportSuccessSchema, 'Step 7 Confirm Import')
 
   return jobId
 }
