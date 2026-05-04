@@ -136,6 +136,32 @@ export async function getEmployeeProfiles(
 }
 
 /**
+ * Resets a single employee_profile row to post-import state (consent_status='new',
+ * user_id=NULL, employment_id=NULL) by employee_id + company_id.
+ *
+ * Used in consent test afterEach cleanup for signup-only tests. After a test signs up
+ * an employee, hardDeleteEmployee() removes the users row but leaves the employee_profile
+ * row with consent_status='pending_review'. This reset ensures subsequent test runs
+ * start from a clean 'new' state rather than inheriting leftover consent state.
+ */
+export async function resetConsentEmployeeProfile(
+  employeeId: string,
+  companyId: number
+): Promise<void> {
+  await query(
+    `UPDATE employee_profile
+     SET consent_status = 'new',
+         user_id        = NULL,
+         employment_id  = NULL,
+         updated_at     = NOW(),
+         deleted_at     = NULL
+     WHERE employee_id = $1
+       AND company_id  = $2`,
+    [employeeId, companyId]
+  )
+}
+
+/**
  * Returns the consent_status for a single employee.
  * Returns null if no matching row exists.
  */
@@ -364,4 +390,35 @@ export async function getUserById(userId: number) {
   }
 
   return result.rows[0]
+}
+
+/**
+ * Polls getEmployeeProfiles until all expected employee IDs have a row with the
+ * given consent_status. Retries every 1 second for up to 15 seconds.
+ *
+ * Used after a screening or approval import to wait for the async import job
+ * to commit rows to employee_profile — a fixed sleep is unreliable under load.
+ */
+export async function pollForEmployeeProfiles(
+  employeeIds: string[],
+  companyId: number,
+  expectedStatus: string,
+  timeoutMs = 15000,
+  intervalMs = 500
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const rows = await getEmployeeProfiles(employeeIds, companyId)
+    const allReady =
+      rows.length === employeeIds.length &&
+      rows.every((r) => r.consent_status === expectedStatus)
+    if (allReady) return
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+  const rows = await getEmployeeProfiles(employeeIds, companyId)
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for employee_profile rows. ` +
+    `Expected ${employeeIds.length} rows with consent_status='${expectedStatus}', ` +
+    `got ${rows.length} rows: ${JSON.stringify(rows.map((r) => ({ id: r.employee_id, status: r.consent_status })))}`
+  )
 }

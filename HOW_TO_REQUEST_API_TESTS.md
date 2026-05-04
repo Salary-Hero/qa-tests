@@ -1,208 +1,192 @@
-# How to Request API Tests
+# How to Request API Tests from the AI
 
-This is a guide for how to get new API tests written for this repo with minimal manual work.
-
-## TL;DR
-
-Give the AI agent two things:
-
-1. Path to the Bruno collection folder for the endpoints
-2. A short requirement file (optional but recommended)
-
-The agent handles the rest.
+This guide explains how to use the OpenCode AI agent to write, review, and maintain tests in this repo.
 
 ---
 
-## The 5-step workflow
+## The 3-Phase Workflow
+
+New tests are built in three phases. Each phase has a dedicated slash command.
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│ 1. You share Bruno path + (optional) requirement file            │
-│ 2. Agent generates test cases in Testomat Markdown format        │
-│ 3. You review + approve / adjust the test case list              │
-│ 4. Agent generates Playwright test code + Zod schemas            │
-│ 5. Agent runs `yarn tsc` + `yarn test:api` to verify             │
-└──────────────────────────────────────────────────────────────────┘
+/analyse-feature <feature>   ← Phase 1: Read API contracts, generate requirement docs
+/plan-tests <feature>        ← Phase 2: Draft test cases, wait for your approval
+/new-test <feature>          ← Phase 3: Scaffold the actual test code
 ```
 
----
-
-## Step 1 — Share context
-
-Minimum message:
-
-> "Write API tests for `<feature>`. Bruno: `<absolute path to Bruno folder>`."
-
-With requirement file (recommended):
-
-> "Write API tests for `<feature>`. Bruno: `<path>`. Requirement: `requirements/<feature>.md`."
-
-### What Bruno provides
-
-- Method, URL, headers, auth
-- Request body (JSON, form-urlencoded, multipart)
-- Success and error response examples
-- Inline docs
-
-### What the requirement file provides
-
-- Business context / user flow
-- Test data lifecycle (seed / cleanup order)
-- Must-cover scenarios list
-- Environment-specific values (OTP per env, etc.)
-
-Use the template at `requirements/_TEMPLATE.md` (in the `ai-tools` repo).
+Run them in order. Each phase depends on the output of the previous one.
 
 ---
 
-## Step 2 — Test cases generated
+### Phase 1 — Analyse
 
-Output: `.opencode/plans/test-cases-<feature>.md` in Testomat Markdown format.
-
-Includes:
-
-- Happy path
-- Validation errors (missing/invalid fields)
-- State-dependent errors (invalid OTP, duplicate signup, etc.)
-- Auth errors (if applicable)
-
----
-
-## Step 3 — Review
-
-Tell the agent:
-
-- "Skip test case #5"
-- "Add an empty-string phone case"
-- "Proceed"
-
-Reviewing Markdown is cheap. Catching gaps here is much faster than after code is written.
-
----
-
-## Step 4 — Code generated
-
-Files the agent will create or update:
-
-| File                                    | Purpose                                                                         |
-| --------------------------------------- | ------------------------------------------------------------------------------- |
-| `shared/endpoints.ts`                   | Endpoint constants (appended, no duplication)                                   |
-| `shared/fixtures/seed-config.json`      | Per-env company IDs + fixed identifiers (updated if a new auth method is added) |
-| `api/schema/<feature>.schema.ts`        | Zod schemas derived from Bruno examples                                         |
-| `api/helpers/profiles/<method>.ts`      | `SeedProfile` for this auth method (see "Seed Profiles" below)                  |
-| `api/helpers/<domain>.ts`               | Low-level admin API helpers                                                     |
-| `api/tests/<feature>/<feature>.test.ts` | Test spec using `seedFromProfile` / `cleanupFromProfile`                        |
-| `shared/fixtures/<feature>.json`        | Test data (only if not reusable)                                                |
-
-Conventions:
-
-- `helpers/` — functions
-- `helpers/profiles/` — one `SeedProfile` per auth method
-- `fixtures/` — static data only (including `seed-config.json`)
-- `schema/` — Zod schemas
-- All endpoints live in `shared/endpoints.ts`
-
----
-
-## Step 5 — Verify
-
-Agent runs:
-
-- `yarn tsc` — must pass
-- `yarn test:api` — on dev by default
-- Reports results back
-
----
-
-## What you provide vs what the agent does
-
-| Task                             | Who             |
-| -------------------------------- | --------------- |
-| Share Bruno path                 | You             |
-| Write short requirement file     | You (~10 lines) |
-| Extract endpoints from Bruno     | Agent           |
-| Derive Zod schemas from examples | Agent           |
-| Generate test cases              | Agent           |
-| Review test cases                | You             |
-| Write Playwright code            | Agent           |
-| Write helpers / fixtures         | Agent           |
-| Run `yarn tsc` + tests           | Agent           |
-| Triage failures                  | Both            |
-
----
-
-## Seed Profiles
-
-Different auth methods need different seed data. Instead of one generic seed helper, each auth method has its own **`SeedProfile`** under `api/helpers/profiles/`.
-
-A profile declares:
-
-- Which company to use (resolved from `seed-config.json` per env)
-- Which identifier field + strategy (`generated` | `fixed` | `pool`)
-- How to create the employee
-- Ordered cleanup steps (run post-test AND as forced pre-seed cleanup for idempotency)
-- Parallelism (`safe` | `must-be-serial`)
-
-### Test file usage
-
-```ts
-import {
-  seedFromProfile,
-  cleanupFromProfile,
-  SeedContext,
-} from '../../helpers/seed'
-import { phoneSignupProfile } from '../../helpers/profiles/phone'
-
-test.describe('Signup by Phone', () => {
-  let ctx: SeedContext
-
-  test.beforeEach(async ({ request }) => {
-    ctx = await seedFromProfile(request, phoneSignupProfile)
-  })
-
-  test.afterEach(async ({ request }) => {
-    await cleanupFromProfile(request, phoneSignupProfile, ctx)
-  })
-
-  test('happy path', async ({ request }) => {
-    const phone = ctx.identifiers.phone!
-    // ...
-  })
-})
+```
+/analyse-feature digital-consent
 ```
 
-### Adding a new profile
+The agent will:
+- Read your `BRIEF.md` if one exists at `.opencode/requirements/<feature>/BRIEF.md`
+- Optionally fetch a Confluence or Jira URL you pass as a second argument
+- Search the Bruno / Postman collections for matching API endpoints
+- Generate four requirement docs under `.opencode/requirements/<feature>/`:
+  - `README.md` — feature overview
+  - `api-contract.md` — endpoints, payloads, status codes, type quirks
+  - `test-requirements.md` — objectives, scope, risks
+  - `test-data.md` — identifiers, constraints, cleanup strategy
 
-1. **Fill in `shared/fixtures/seed-config.json`** with the company ID for the new method on dev/staging (and any fixed identifier values).
-2. **Create `api/helpers/profiles/<method>.ts`** implementing `SeedProfile`.
-3. **Write the test** using `seedFromProfile(request, <method>SignupProfile)`.
-4. **If the profile uses a fixed identifier**, add `test.describe.configure({ mode: 'serial' })` to the test file.
-
-### Cleanup behavior
-
-- **Post-test** (`afterEach`): runs all cleanup steps, best-effort — errors are logged as warnings but never throw.
-- **Pre-seed** (`beforeEach`): the same cleanup steps also run before creating the employee, making tests idempotent across partial-failure reruns. Cleanup steps must tolerate "not found" responses (the `employee.ts` helpers already do — 404 is ignored).
-
----
-
-## Tips
-
-- **Start minimal.** One happy path test is a better starting point than 20 edge cases.
-- **Review test cases before code.** Changing a Markdown bullet is free; regenerating code is not.
-- **Use the Bruno collection as the source of truth.** Do not hand-copy endpoints or payloads into requirement files.
-- **Reuse profiles and helpers.** If a seed profile already exists for the auth method, reuse it. Do not duplicate.
-- **Endpoints go in one place.** Always `shared/endpoints.ts`. If the agent tries to hardcode a string, push back.
-- **Seed config goes in one place.** Always `shared/fixtures/seed-config.json`. Never commit secrets to this file (only IDs and identifier values).
+**Tip:** Write a plain-language brief first. Create `.opencode/requirements/<feature>/BRIEF.md` with your notes — edge cases, out-of-scope items, known gotchas. The agent reads this before anything else.
 
 ---
 
-## Example request
+### Phase 2 — Plan
 
-> Write API tests for signup by LINE.
->
-> - Bruno: `/Users/admin/Workspace/api-collection/opencollection/🧙🏻‍♂️ QA - Dual Write Database (Tao)/🟢 [E2E] Signup/🟠 By Line/`
-> - Requirement: `requirements/signup-line.md`
-> - Reuse `createEmployee` / `deleteEmployee` from `api/helpers/employee.ts`
-> - Start with happy path only
+```
+/plan-tests digital-consent
+```
 
-That is enough.
+The agent will:
+- Read all requirement docs from Phase 1
+- Draft happy-path and negative test cases with IDs, tags, steps, and pass criteria
+- **Print the full plan to the terminal and wait for your approval before saving anything**
+
+Reply `approve` (or `yes`, `lgtm`, `looks good`) to save `test-cases.md` and update `COVERAGE_MATRIX.md`.
+
+Reply with corrections to revise the plan before saving.
+
+---
+
+### Phase 3 — Scaffold
+
+```
+/new-test digital-consent
+```
+
+The agent will:
+1. Run `qa-infrastructure-verifier` to confirm the environment is healthy
+2. Read `test-cases.md` from Phase 2
+3. Create:
+   - `api/tests/<feature>/<feature>.test.ts` — the test file
+   - `api/helpers/<feature>-flow.ts` — reusable API call helpers
+   - `api/schema/<feature>.schema.ts` — Zod response schemas
+   - Entries in `shared/endpoints.ts` for any new URLs
+   - DB cleanup helpers in `shared/db-helpers.ts` if needed
+4. Run `yarn tsc` and fix all type errors before finishing
+
+---
+
+## Other Commands
+
+### Add a test case to an existing file
+
+```
+/enhance-test api/tests/digital-consent/digital-consent.test.ts TC-CONSENT-005
+/enhance-test api/tests/digital-consent/digital-consent.test.ts "add rejection case after EID mismatch"
+```
+
+Pass a TC ID to use the exact spec from `test-cases.md`, or a free-form description to add a new case.
+
+---
+
+### Review a test file for violations
+
+```
+/check-test api/tests/employee/employee.test.ts
+```
+
+Reports every violation — security, standards, types, patterns — with severity and suggested fix. Does **not** make changes.
+
+---
+
+### Review and fix a test file
+
+```
+/fix-test api/tests/employee/employee.test.ts
+```
+
+Same checks as `/check-test`, but immediately applies all fixes and runs `yarn tsc` at the end.
+
+---
+
+### Clean up code quality in any file
+
+```
+/clean-code api/helpers/signup-flow.ts
+```
+
+Fixes security issues, DB placement, auth helpers, hardcoded IDs, TypeScript issues, missing `test.step()` wrappers, and dead imports. Then runs `yarn tsc`.
+
+---
+
+### Run the test suite
+
+```
+/run-tests
+```
+
+Runs `npm run test:api` and interprets the results — groups failures by category (infra, data state, code bug, type error) and suggests fixes for each.
+
+---
+
+### Fix TypeScript errors
+
+```
+/type-check
+```
+
+Runs `yarn tsc`, groups errors by file, fixes them all, and re-runs until zero errors.
+
+---
+
+### Write a PR description
+
+```
+/pr
+```
+
+Reads git history, changed files, and `COVERAGE_MATRIX.md` to produce a PR body. Saves the draft to `.opencode/plans/pr/<branch-name>.md`. Does **not** open a PR or commit anything.
+
+---
+
+## Agents (run automatically by commands)
+
+| Agent | Invoked by | What it does |
+|---|---|---|
+| `qa-infrastructure-verifier` | `/new-test` Step 0 | Checks dependencies, `yarn tsc`, env vars, git state, Playwright |
+| `qa-code-reviewer` | `/check-test` | Read-only review — reports issues, never edits |
+| `qa-pr-writer` | `/pr` | Writes PR description from git diff + coverage matrix |
+| `qa-security-auditor` | Manual | Audits for credential exposure and compliance |
+| `qa-test-planner` | Manual | Plans test strategies for complex features |
+
+To invoke an agent manually, describe what you want in plain language — the agent will be selected automatically.
+
+---
+
+## Where Files Live
+
+| What you need | Where it goes |
+|---|---|
+| Raw SQL queries | `shared/db-helpers.ts` only |
+| Env vars and credentials | `shared/utils/env.ts` |
+| Company IDs, OTP, PINCODE | `shared/utils/seed-config.ts` |
+| API endpoint URL strings | `shared/endpoints.ts` |
+| Random identifier generators | `api/helpers/identifiers.ts` |
+| Zod response schemas | `api/schema/{feature}.schema.ts` |
+| Reusable API call sequences | `api/helpers/{feature}-flow.ts` |
+| Seed / cleanup profiles | `api/helpers/profiles/{auth-method}.ts` |
+| Test files | `api/tests/{feature}/{feature}.test.ts` |
+| Requirement docs (committed) | `.opencode/requirements/{feature}/` |
+| Personal notes and plans | `.opencode/plans/` (gitignored) |
+
+---
+
+## Key Rules to Remember
+
+- **Never call `generatePhone()` directly** — always use `resolvePhone()`. On staging, wrong phone numbers send real SMS messages.
+- **Never hardcode company IDs** — use `getCompany('name')` from `seed-config.ts`.
+- **Always use `parseResponse()`** from `shared/utils/response.ts` to validate API responses — never manual status check + cast.
+- **Always use `hardDeleteEmployee()`** for test cleanup — soft delete leaves data that breaks subsequent test runs.
+- **Run `yarn tsc` after every change** — zero errors required before running tests.
+- **File extension is `.test.ts`** — never `.spec.ts`.
+- **Every action inside a test hook or test body must be wrapped in `test.step()`**.
+
+Full standards reference: `.opencode/skills/qa-engineering-lead/SKILL.md`

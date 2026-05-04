@@ -9,6 +9,14 @@ Scaffold test code for the feature named `$ARGUMENTS`. Follow all rules in `.ope
 
 ---
 
+## Step 0 — Verify infrastructure
+
+Before writing any code, delegate to the `qa-infrastructure-verifier` agent to confirm the environment is healthy.
+
+If the verifier returns `Status: BLOCKED`, stop and print the blocking issue. Do not proceed until the user resolves it.
+
+---
+
 ## Step 1 — Check for existing requirements
 
 Check whether `.opencode/requirements/<feature-name>/` exists and contains `test-cases.md` and `api-contract.md`.

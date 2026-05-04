@@ -5,10 +5,11 @@
  * Runs the 7-step approval import (steps 15–21) using /v3/admin/account/employee-import/.
  *
  * Key difference from the Employee ID Only approval helper:
- * - national_id/passport_no are pre-loaded from the screening fixture and fixed in the
- *   approval xlsx — they do NOT need to be overridden at runtime.
- * - Only `phone` and `account_no` are generated dynamically per test run and must be
- *   passed as row overrides so they match the consent request form submission.
+ * - national_id/passport_no are pre-loaded from the screening fixture and are
+ *   already correct in the static approval xlsx. They can optionally be overridden
+ *   per-row (e.g. when a test submits a different identity value at signup time).
+ * - `phone` and `account_no` must always be passed as row overrides to match the
+ *   consent request form submission and avoid bank uniqueness collisions.
  *
  * Step 15 uses native fetch (not Playwright request context) because
  * playwright.config extraHTTPHeaders sets Content-Type: application/json globally,
@@ -19,17 +20,48 @@ import * as fs from 'fs'
 import * as path from 'path'
 import ExcelJS from 'exceljs'
 import { endpoints } from '../../shared/endpoints'
-import { validateSchema } from '../../shared/utils/schema'
+import { parseResponse } from '../../shared/utils/response'
 import { getCompany } from '../../shared/utils/seed-config'
 import { getApiBaseUrl } from '../../shared/utils/env'
+import { generateAccountNo } from './identifiers'
 import {
   ApprovalImportJobSchema,
   ApprovalImportPreviewSchema,
   ImportSuccessSchema,
+  ImportMappingSchema,
   ApprovalRowOverride,
 } from '../schema/digital-consent.schema'
 
 export type { ApprovalRowOverride }
+
+/**
+ * Posts to `url` and returns the response. Retries with 500ms backoff if the
+ * server responds with a non-2xx — the import pipeline processes steps
+ * asynchronously, so the next step may not be ready immediately.
+ * Throws after `maxAttempts` with the final status code and response body so
+ * the test fails immediately with a clear message rather than passing a failing
+ * response to parseResponse.
+ */
+async function retryPost(
+  request: APIRequestContext,
+  url: string,
+  headers: Record<string, string>,
+  maxAttempts = 8,
+  backoffMs = 500
+): ReturnType<APIRequestContext['post']> {
+  let last: Awaited<ReturnType<APIRequestContext['post']>>
+  for (let i = 0; i < maxAttempts; i++) {
+    last = await request.post(url, { headers })
+    if (last.ok()) return last
+    await new Promise((resolve) => setTimeout(resolve, backoffMs))
+  }
+  const body = await last!.text().catch(() => '<unreadable>')
+  throw new Error(
+    `retryPost exhausted ${maxAttempts} attempts for ${url}\n` +
+    `  Last status: ${last!.status()}\n` +
+    `  Body: ${body}`
+  )
+}
 
 const FIXTURE_PATH = path.resolve(__dirname, '../fixtures/digital-consent-import-approval.xlsx')
 
@@ -103,12 +135,7 @@ export async function importDigitalConsentApprovalData(
       },
     },
   })
-  if (!configResponse.ok()) {
-    throw new Error(
-      `Step 16 Update Config failed: ${configResponse.status()} ${await configResponse.text()}`
-    )
-  }
-  validateSchema(await configResponse.json(), ApprovalImportJobSchema, 'Update Config - Approval')
+  await parseResponse(configResponse, ApprovalImportJobSchema, 'Step 16 Update Config - Approval')
 
   // Step 17: Map Excel column headers to API fields — full employee data
   const mappingResponse = await request.put(endpoints.consent.approvalImportMapping(COMPANY.id), {
@@ -153,11 +180,7 @@ export async function importDigitalConsentApprovalData(
       company_mapping: {},
     },
   })
-  if (!mappingResponse.ok()) {
-    throw new Error(
-      `Step 17 Mapping Column failed: ${mappingResponse.status()} ${await mappingResponse.text()}`
-    )
-  }
+  await parseResponse(mappingResponse, ImportMappingSchema, 'Step 17 Mapping Column - Approval')
 
   // Step 18: Re-confirm config after mapping
   const reConfigResponse = await request.put(endpoints.consent.approvalImportUpdateJob(jobId), {
@@ -177,26 +200,11 @@ export async function importDigitalConsentApprovalData(
       },
     },
   })
-  if (!reConfigResponse.ok()) {
-    throw new Error(
-      `Step 18 Update Config After Mapping failed: ${reConfigResponse.status()} ${await reConfigResponse.text()}`
-    )
-  }
-  validateSchema(await reConfigResponse.json(), ApprovalImportJobSchema, 'Update Config After Mapping - Approval')
+  await parseResponse(reConfigResponse, ApprovalImportJobSchema, 'Step 18 Update Config After Mapping - Approval')
 
-  await new Promise((resolve) => setTimeout(resolve, 2000))
-
-  // Step 19: Generate approval preview
-  const previewResponse = await request.post(endpoints.consent.approvalImportPreview(jobId), {
-    headers: authHeaders,
-  })
-  if (!previewResponse.ok()) {
-    throw new Error(
-      `Step 19 Approval Preview failed: ${previewResponse.status()} ${await previewResponse.text()}`
-    )
-  }
-  const previewBody = await previewResponse.json()
-  validateSchema(previewBody, ApprovalImportPreviewSchema, 'Approval Preview')
+  // Step 19: Generate approval preview — retries until the server finishes processing Step 18
+  const previewResponse = await retryPost(request, endpoints.consent.approvalImportPreview(jobId), authHeaders)
+  const previewBody = await parseResponse(previewResponse, ApprovalImportPreviewSchema, 'Step 19 Approval Preview')
   if (previewBody.preview.approve_num_row === 0) {
     throw new Error(
       `Step 19 Approval Preview: 0 rows eligible for approval. ` +
@@ -206,38 +214,28 @@ export async function importDigitalConsentApprovalData(
     )
   }
 
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  // Step 20: Validate — retries until preview processing settles
+  const validateResponse = await retryPost(request, endpoints.consent.approvalImportValidate(jobId), authHeaders)
+  await parseResponse(validateResponse, ImportSuccessSchema, 'Step 20 Validate - Approval')
 
-  // Step 20: Validate
-  const validateResponse = await request.post(endpoints.consent.approvalImportValidate(jobId), {
-    headers: authHeaders,
-  })
-  if (!validateResponse.ok()) {
-    throw new Error(
-      `Step 20 Validate failed: ${validateResponse.status()} ${await validateResponse.text()}`
-    )
-  }
-  validateSchema(await validateResponse.json(), ImportSuccessSchema, 'Validate - Approval')
+  // Step 21: Confirm approval import — retries until validation processing settles
+  const importResponse = await retryPost(request, endpoints.consent.approvalImportConfirm(jobId), authHeaders)
+  await parseResponse(importResponse, ImportSuccessSchema, 'Step 21 Confirm Import - Approval')
 
-  await new Promise((resolve) => setTimeout(resolve, 1000))
-
-  // Step 21: Confirm approval import
-  const importResponse = await request.post(endpoints.consent.approvalImportConfirm(jobId), {
-    headers: authHeaders,
-  })
-  if (!importResponse.ok()) {
-    throw new Error(
-      `Step 21 Confirm Approval Import failed: ${importResponse.status()} ${await importResponse.text()}`
-    )
-  }
-  validateSchema(await importResponse.json(), ImportSuccessSchema, 'Confirm Import - Approval')
-
+  // The confirm step triggers a background worker that updates employee_profile.consent_status.
+  // The caller is responsible for polling until the expected status is reached.
   return jobId
 }
 
 /**
  * Builds an approval xlsx in-memory from the static fixture, applying per-row
  * overrides for phone and account_no (and optionally national_id/passport_no).
+ *
+ * All fixture rows are preserved — only the rows matching an override have their
+ * dynamic fields updated. Keeping all rows is required because the API scopes the
+ * import by pay cycle: employees in the pay cycle but absent from the xlsx are
+ * flagged in delete_rows, which can cause the approval worker to silently abort
+ * even when delete_action is false.
  *
  * For the standard consent company, national_id/passport_no are pre-loaded from
  * the screening fixture and are already correct in the static xlsx — only phone
@@ -261,10 +259,26 @@ async function buildApprovalXlsx(overrides: ApprovalRowOverride[]): Promise<Arra
 
   ws.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return
-    const employeeIdCell = row.getCell(colIndex['Employee ID'])
-    const employeeId = String(employeeIdCell.value ?? '')
+
+    // Normalise national_id to string — fixture stores it as a number, but the
+    // approval worker does a string comparison against the consent form submission.
+    if (colIndex['National ID']) {
+      const cell = row.getCell(colIndex['National ID'])
+      if (cell.value !== null && cell.value !== undefined && cell.value !== '') {
+        cell.value = String(cell.value)
+      }
+    }
+
+    const employeeId = String(row.getCell(colIndex['Employee ID']).value ?? '')
     const override = overrideMap.get(employeeId)
-    if (!override) return
+    if (!override) {
+      // Generate a fresh account_no for rows without an explicit override — the static
+      // fixture values may already exist in user_bank from a previous test run, causing
+      // the approval worker to fail the entire batch due to a uniqueness collision.
+      row.getCell(colIndex['Bank Account Number']).value = generateAccountNo()
+      row.commit()
+      return
+    }
 
     row.getCell(colIndex['Mobile']).value = override.phone
     row.getCell(colIndex['Bank Account Number']).value = override.account_no

@@ -1,85 +1,54 @@
-# QA Tests — Project Coding Standards
+# QA Tests — Agent Rules
 
-Rules for every session in this repo. Load `.opencode/skills/qa-engineering-lead/SKILL.md` for detailed rationale and examples.
+Full coding standards and rationale live in `.opencode/AGENTS.md` and `.opencode/skills/qa-engineering-lead/SKILL.md`.
+
+Load the skill at the start of every coding session in this repo:
+
+```
+.opencode/skills/qa-engineering-lead/SKILL.md
+```
 
 ---
 
-## DB Queries
+## Quick Reference
 
-- `query()` is permitted **only** in `shared/db-helpers.ts`
-- `.test.ts` files must never import `query` directly
-- Cleanup functions that touch the DB must live in `shared/db-helpers.ts`
-- No DB fallback for API failures — surface the API error
+### Never do this
+- Call `query()` outside `shared/db-helpers.ts`
+- Write `DROP`, `TRUNCATE`, `ALTER TABLE`, or any DDL SQL — ever
+- Write `DELETE` or `UPDATE` without a `WHERE` clause scoped to specific IDs
+- Write SQL targeting a table not in the known list (`users`, `employment`, `user_identity`, `user_balance`, `user_bank`, `user_provider`, `employee_profile`, `employee_profile_audit`, `company_user_sites`)
+- Touch the DB if `ENV` is not `'dev'` or `'staging'` — stop and ask first
+- Read `process.env` outside `shared/utils/env.ts`
+- Hardcode company IDs — use `getCompany('name')`
+- Use `getAdminToken()` from anywhere except `api/helpers/admin-console-auth.ts`
+- Call `generatePhone()` directly — always use `resolvePhone()`
+- Use file extension `.spec.ts` — always `.test.ts`
+- Add `any` types or `as any` casts
+- Create `.env.dev` or `.env.staging` — one `.env` file, `_DEV`/`_STAGING` key suffixes
+- Commit, push, or create PRs unless explicitly asked
 
-## DB Safety
+### Always do this
+- Wrap every action in `test()` / `beforeAll()` / `afterEach()` etc. with `test.step()`
+- Run `yarn tsc` after every change — zero errors required
+- Put cleanup functions that touch the DB in `shared/db-helpers.ts`
+- Use `hardDeleteEmployee()` for teardown — never rely on soft delete
+- Validate every API response with `parseResponse()` from `shared/utils/response.ts`
+- Follow test naming: `[Type] – [Feature] – [Scenario] – [Expected Result]`
+- Include all four mandatory tags: `@component/@workflow`, `@high/@medium/@low`, `@smoke/@regression`, `@guardian/@avengers/@shared`
 
-**These SQL operations are forbidden. Never write them under any circumstances:**
-
-- `DROP TABLE` / `DROP DATABASE` / `TRUNCATE`
-- `DELETE` or `UPDATE` without a `WHERE` clause
-- `ALTER TABLE` / `CREATE TABLE` / any DDL statement
-- `GRANT` / `REVOKE`
-
-**Before writing any SQL, verify:**
-
-- `ENV` is `'dev'` or `'staging'` — if not, stop and ask
-- `WHERE` clause is scoped to specific IDs (`user_id`, `employee_id`, `company_id`) — never unscoped
-- Target table is in the known list: `users`, `employment`, `user_identity`, `user_balance`, `user_bank`, `user_provider`, `employee_profile`, `employee_profile_audit`, `company_user_sites`
-- For DELETE: check if `hardDeleteEmployee()` already covers this — use it instead of a new query
-
-**If any of the above cannot be confirmed — stop and ask the user before writing or running any SQL.**
-
-See SKILL.md Section 17 for the full safe SQL checklist and rationale.
-
-## Configuration
-
-- **Env vars**: `shared/utils/env.ts` only — never `shared/env-config.ts` (deprecated)
-- **Company IDs**: `getCompany('name')` from `shared/utils/seed-config.ts` — never hardcoded numbers
-- **Base URLs**: `playwright.config.ts` only — no `API_HOST` maps in helpers
-- **Admin auth**: `getAdminToken()` from `api/helpers/admin-auth.ts` — never `loginAsAdmin()` or `shared/auth.ts` (both deprecated)
-
-## TypeScript
-
-- No `any` types in test files — use typed interfaces (`EmployeeResponse`, etc.)
-- No `as any` casts — use `Partial<T>` for PATCH payloads
-- `npm run tsc` must pass with zero errors before running tests
-- Install packages in `package.json` before importing them
-
-## Test Files
-
-- Extension: `.test.ts` only — never `.spec.ts`
-- Every action in `test()`, `beforeAll()`, `afterAll()`, `beforeEach()`, `afterEach()` must be wrapped in `test.step()`
-- No unused imports; no dead exports
-- Every field asserted in a test must be declared in the corresponding Zod schema (use `.optional()` for feature-specific fields)
-
-## Identifiers
-
-- All random identifier generators live in `api/helpers/identifiers.ts` only
-- Do not add `generateRandomString` or similar to `shared/` or other helpers
-
-## HTTP
-
-- All requests use the Playwright `request` context (or helpers that wrap it)
-- `shared/api-client.ts` constructs absolute URLs — avoid for new code; use relative paths
-
-## Deprecated — Do Not Use or Replicate
-
-| Deprecated | Use instead |
+### Where things go
+| Need | File |
 |---|---|
-| `shared/env-config.ts` | `shared/utils/env.ts` |
-| `shared/auth.ts` / `loginAsAdmin()` | `api/helpers/admin-auth.ts` / `getAdminToken()` |
-| `shared/utils/request.ts` | Playwright `request` context |
-| `deleteEmployeeViaAPIWithFallback` | Direct `deleteEmployee()` API call |
-| `as any` / `let x: any` | Typed interface or `Partial<T>` |
-| Hardcoded company IDs (`514`, `128`) | `getCompany('name').id` |
-| `query()` in `.test.ts` | Named function in `shared/db-helpers.ts` |
+| DB query | `shared/db-helpers.ts` |
+| Env vars / credentials | `shared/utils/env.ts` |
+| Company IDs, OTP, PINCODE | `shared/utils/seed-config.ts` |
+| API endpoint URLs | `shared/endpoints.ts` |
+| Random identifiers | `api/helpers/identifiers.ts` |
+| Zod response schemas | `api/schema/{feature}.schema.ts` |
+| Seed/cleanup profiles | `api/helpers/profiles/{auth-method}.ts` |
+| Reusable API call sequences | `api/helpers/{feature}-flow.ts` |
 
-## Plans and Notes
-
-Personal working docs go in `.opencode/plans/` (gitignored).
-Requirements docs go in `.opencode/requirements/<feature>/`.
-Never create `.md` files in the project root or `docs/` unless explicitly asked.
-
-## Git
-
-Never commit, push, or create pull requests unless explicitly asked.
+### Plans and notes
+- Personal docs → `.opencode/plans/` (gitignored)
+- Requirements docs → `.opencode/requirements/<feature>/`
+- Never create `.md` files at project root or in `docs/` unless explicitly asked
