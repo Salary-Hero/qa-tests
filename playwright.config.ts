@@ -44,6 +44,7 @@ export default defineConfig({
     {
       name: 'api',
       testDir: './api/tests',
+      testIgnore: '**/_template.test.ts',
       timeout: 60000,
       use: {
         baseURL: baseURLs[ENV],

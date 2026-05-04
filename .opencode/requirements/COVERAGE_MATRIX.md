@@ -1,6 +1,6 @@
 # Test Coverage Matrix
 
-Last updated: 2026-04-30 | Passing: **17/20 (85%)** | Planned: **3** | Planned negative cases: **2/14**
+Last updated: 2026-05-04 | Passing: **17/17 (100%)** | Planned: **0** | Planned negative cases: **2/14**
 
 ## Test Cases
 
@@ -16,16 +16,13 @@ Last updated: 2026-04-30 | Passing: **17/20 (85%)** | Planned: **3** | Planned n
 | TC-SIGN-003 | Signup: Employee ID | Full flow with national ID | `signup/signup-employee-id.test.ts` | `@guardian` | High | | ✅ PASS |
 | TC-SIGN-004 | Signup: Employee ID | Full flow with passport | `signup/signup-employee-id.test.ts` | `@guardian` | High | | ✅ PASS |
 | TC-CONSENT-001 | Digital Consent | Import → consent_status = new | `digital-consent/digital-consent.test.ts` | `@smoke @guardian` | High | ✅ | ✅ PASS |
-| TC-CONSENT-002 | Digital Consent | Signup with national_id | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | ✅ PASS |
-| TC-CONSENT-003 | Digital Consent | Signup with passport_no | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | ✅ PASS |
 | TC-CONSENT-004 | Digital Consent | Non-signed-up stay consent_status = new | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | ✅ PASS |
+| TC-CONSENT-005 | Digital Consent | Full approve flow — national_id — consent_status = approved, users.status = active | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | ✅ PASS |
+| TC-CONSENT-006 | Digital Consent | Full approve flow — passport_no — consent_status = approved, users.status = inactive | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | ✅ PASS |
 | TC-CONSENT-EID-001 | Digital Consent: Employee ID Only | Import → consent_status = new | `digital-consent/digital-consent.test.ts` | `@smoke @guardian` | High | ✅ | ✅ PASS |
-| TC-CONSENT-EID-002 | Digital Consent: Employee ID Only | Signup with national_id | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | ✅ PASS |
-| TC-CONSENT-EID-003 | Digital Consent: Employee ID Only | Signup with passport_no | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | ✅ PASS |
 | TC-CONSENT-EID-004 | Digital Consent: Employee ID Only | Non-signed-up stay consent_status = new | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | ✅ PASS |
-| TC-CONSENT-EID-005 | Digital Consent: Employee ID Only | Full approve flow — consent_status = approved, status = active | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | 🔲 PLANNED |
-| TC-CONSENT-005 | Digital Consent | Full approve flow — national_id — consent_status = approved, users.status = active | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | 🔲 PLANNED |
-| TC-CONSENT-006 | Digital Consent | Full approve flow — passport_no — consent_status = approved, users.status = inactive | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | 🔲 PLANNED |
+| TC-CONSENT-EID-005 | Digital Consent: Employee ID Only | Full approve flow — national_id — consent_status = approved, users.status = active | `digital-consent/digital-consent.test.ts` | `@guardian` | High | | ✅ PASS |
+| TC-CONSENT-EID-006 | Digital Consent: Employee ID Only | Full approve flow — passport_no — consent_status = approved, users.status = inactive | `digital-consent/digital-consent.test.ts` | `@low @guardian` | Low | | ✅ PASS |
 
 ## Summary by Feature
 
@@ -35,9 +32,9 @@ Last updated: 2026-04-30 | Passing: **17/20 (85%)** | Planned: **3** | Planned n
 | Signup: Phone | 1 | ✅ 1 | `@guardian` | OTP → Firebase → PIN → profile |
 | Signup: LINE | 1 | ✅ 1 | `@guardian` | LINE token → OTP → Firebase → PIN → profile |
 | Signup: Employee ID | 2 | ✅ 2 | `@guardian` | national_id and passport_no variants |
-| Digital Consent | 6 | ✅ 4 / 🔲 2 | `@guardian` | Company imports employee_id + national_id/passport_no; approval flow |
-| Digital Consent: Employee ID Only | 5 | ✅ 4 / 🔲 1 | `@guardian` | Screening import + signup (national_id, passport_no) + approval |
-| **Total** | **20** | **✅ 17 / 🔲 3** | | |
+| Digital Consent | 4 | ✅ 4 | `@guardian` | Import, unaffected check, national_id + passport_no approval flows |
+| Digital Consent: Employee ID Only | 4 | ✅ 4 | `@guardian` | Import, unaffected check, national_id approval (high), passport_no approval (low) |
+| **Total** | **17** | **✅ 17** | | |
 
 ## Summary by Operation
 
@@ -49,14 +46,12 @@ Last updated: 2026-04-30 | Passing: **17/20 (85%)** | Planned: **3** | Planned n
 | Phone OTP signup | TC-SIGN-001 | ✅ |
 | LINE signup | TC-SIGN-002 | ✅ |
 | Employee ID signup | TC-SIGN-003, TC-SIGN-004 | ✅ |
-| PIN creation | TC-SIGN-001, TC-SIGN-002, TC-SIGN-003, TC-SIGN-004, TC-CONSENT-002, TC-CONSENT-003, TC-CONSENT-EID-002, TC-CONSENT-EID-003 | ✅ |
-| Profile verification | TC-SIGN-001, TC-SIGN-002, TC-SIGN-003, TC-SIGN-004, TC-CONSENT-002, TC-CONSENT-003, TC-CONSENT-EID-002, TC-CONSENT-EID-003 | ✅ |
+| PIN creation | TC-SIGN-001, TC-SIGN-002, TC-SIGN-003, TC-SIGN-004, TC-CONSENT-005, TC-CONSENT-006, TC-CONSENT-EID-005, TC-CONSENT-EID-006 | ✅ |
+| Profile verification | TC-SIGN-001, TC-SIGN-002, TC-SIGN-003, TC-SIGN-004, TC-CONSENT-005, TC-CONSENT-006, TC-CONSENT-EID-005, TC-CONSENT-EID-006 | ✅ |
 | Consent import (employee_id + identity) | TC-CONSENT-001 | ✅ |
 | Consent import (employee_id only) | TC-CONSENT-EID-001 | ✅ |
-| Consent signup (identity pre-loaded) | TC-CONSENT-002, TC-CONSENT-003 | ✅ |
-| Consent signup (identity user-provided) | TC-CONSENT-EID-002, TC-CONSENT-EID-003 | ✅ |
-| Consent approval import (identity user-provided) | TC-CONSENT-EID-005 | 🔲 PLANNED |
-| Consent approval import (identity pre-loaded) | TC-CONSENT-005, TC-CONSENT-006 | 🔲 PLANNED |
+| Consent approval import (identity pre-loaded) | TC-CONSENT-005, TC-CONSENT-006 | ✅ |
+| Consent approval import (identity user-provided) | TC-CONSENT-EID-005, TC-CONSENT-EID-006 | ✅ |
 | DB state check | TC-CONSENT-001, TC-CONSENT-004, TC-CONSENT-EID-001, TC-CONSENT-EID-004 | ✅ |
 
 ## Smoke Tests (`@smoke`)

@@ -58,11 +58,9 @@ Admin:    Upload approval Excel → Configure → Map columns → Preview → Va
 | Test ID | Description | Identity Type | Status |
 |---------|-------------|---------------|--------|
 | TC-CONSENT-001 | Import 4 employees — `consent_status = 'new'` | — | ✅ PASS |
-| TC-CONSENT-002 | Signup with national_id — `consent_status = 'pending_review'` | `national_id` | ✅ PASS |
-| TC-CONSENT-003 | Signup with passport_no — `consent_status = 'pending_review'` | `passport_no` | ✅ PASS |
 | TC-CONSENT-004 | Non-signed-up employees remain `consent_status = 'new'` | — | ✅ PASS |
-| TC-CONSENT-005 | Approve flow (national_id) — `consent_status = 'approved'`, `users.status = 'active'` | `national_id` | 🔲 PLANNED |
-| TC-CONSENT-006 | Approve flow (passport_no) — `consent_status = 'approved'`, `users.status = 'inactive'` | `passport_no` | 🔲 PLANNED |
+| TC-CONSENT-005 | Approve flow (national_id) — `consent_status = 'approved'`, `users.status = 'active'` | `national_id` | ✅ PASS |
+| TC-CONSENT-006 | Approve flow (passport_no) — `consent_status = 'approved'`, `users.status = 'inactive'` | `passport_no` | ✅ PASS |
 
 ## Key Difference vs Employee ID Only Flow
 
